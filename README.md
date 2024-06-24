@@ -3,7 +3,7 @@
 #### About
 This GitHub repository contains the code and part of the data to recreate the analyses of:
 
-Glynn, V. M., . Environmentally-driven holobiont changes impact thermotolerance for Tropical Eastern Pacific corals. *Global Change Biology*, in review.
+Glynn, V. M., Marangoni, L. F. de B, M., Guglielmetti, M., Yuval, M., Tapia, E. R., Cornejo, A.,  Berkowitz-Sklar, D., Ali, V., Quintero, H., Guerra, E. C. R., Kline, D. I.,  L., Leray, Connolly, S. R., Barrett, R. D.H.. Environmentally-driven holobiont changes impact thermotolerance for Tropical Eastern Pacific corals. *Global Change Biology*, in review.
 
 #### Contents
 This repository contains six folders:
