@@ -16,7 +16,7 @@ This repository contains six folders:
 
 * "Physiology" : R scripts for host protein and chlorophyll *a* models, alongside the associated data  
 
-* "Oxidative Metabolism" : R scripts for lipid peroxidation (LPO) and non-enzymatic total antioxidant capacity (TAC) models, alongside the associated data  
+* "Oxidative metabolism" : R scripts for lipid peroxidation (LPO) and non-enzymatic total antioxidant capacity (TAC) models, alongside the associated data  
 
 #### Questions
 If you have questions about the scripts please contact Victoria Marie Glynn (victoria.glynn@mail.mcgill.ca).
