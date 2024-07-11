@@ -1,0 +1,1436 @@
+
+```{r cars}
+library(nlme)
+library(dplyr)
+library(purrr)
+library(ggplot2)
+library(gridExtra)
+
+set.seed(12234) ## random seed for reproducibility 
+```
+
+```{r}
+#Background, from Sean's "culled" script for context
+
+#  Fv               dpar
+#  -- = -------------------------------
+#  Fm  1+exp(bpar*(log(x)-log(epar)))
+# 
+# dpar is the asymptotic Fv/Fm (i.e. Fv/Fm in the absence of heat stress)
+# epar is the inflection point: temp where Fv/Fm has declined to 50% of dpar
+# bpar regulates the sharpness of the threshold (higher bpar->steeper threshold)
+#
+# Region (Perlas vs Coiba) provides the only fixed effects (possible
+#        fixed effect on each of the three model parameters)
+# Site within region and multi-locus genotypes (mtORFs) within site are the possible
+#      random effects. Again, consider possible random effects on each
+#      model parameter
+#
+# This script uses nls for fixed-effect only models and nlme for mixed-effects
+#      models
+```
+
+
+```{r pressure, echo=FALSE}
+### General Setup ----
+# this line changed:
+phys.data <-read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\physio_MLG_mtORF_26Mar2023.csv")
+
+phys.data
+
+##This data has mtORF information for each colony, turn all variables into factors
+
+phys.data <- na.omit(phys.data)
+
+phys.data
+```
+
+```{r}
+phys.data <- phys.data[,-3]
+phys.data <- phys.data[complete.cases(phys.data),]
+
+phys.data$Region <- as.factor(phys.data$Region)
+phys.data$Site <- as.factor(phys.data$Site)
+phys.data$Colony <- as.factor(phys.data$Colony)
+phys.data$mtORF <- as.factor(phys.data$mtORF)
+phys.data$mtORF <- as.factor(phys.data$mtORF)
+
+phys.data$Chl <- sqrt(phys.data$Chl) # SQRT TRANSFORMATION!
+```
+
+```{r}
+##Sanity check all sites and mtORF shown
+siteNames <- unique(phys.data$Site)
+
+siteNames
+
+mtORFCodes <- unique(phys.data$mtORF)
+
+mtORFCodes
+
+regNames <- unique(phys.data$Region)
+
+regNames
+
+tempCodes <- unique(phys.data$Treatment)
+
+tempCodes
+
+```
+
+```{r}
+##We need to hack this issue of two simulatenous fixed effects by creating a new column, mt_reg, that has 4 possible combinations: Coiba_mtORF1, Coiba_mtORF3, etc.
+
+### We will concatenate two columns with the gulf and orf into one new column with said name, mt_reg; let's try this below! 
+
+# create new column with concatenated values
+
+
+levels(phys.data$Region)
+levels(phys.data$mtORF)
+
+phys.data$mt_reg <- paste(phys.data$Region, phys.data$mtORF, sep = "_")
+
+```
+
+```{r}
+# remove spaces from the values in the "mt_reg" column
+phys.data$mt_reg <- gsub(" ", "", phys.data$mt_reg)
+
+phys.data
+
+phys.data$mt_reg  <- as.factor(phys.data$mt_reg)
+
+phys.data
+
+levels(phys.data$mt_reg)
+
+```
+
+```{r}
+# check for duplicate levels in type_color column
+duplicated_levels <- duplicated(phys.data$mt_reg ) | duplicated(phys.data$mt_reg, fromLast = TRUE)
+if (any(duplicated_levels)) {
+  cat("Duplicate levels found in 'phys.data$mt_reg ' column:\n")
+  print(levels(phys.data$mt_reg)[duplicated_levels])
+}
+```
+
+```{r}
+# check for duplicates, accounting for missing values
+complete_rows <- complete.cases(phys.data) # identify complete rows with no missing values
+
+complete_rows
+```
+```{r}
+# remove duplicate levels from type_color column
+phys.data$mt_reg <- droplevels(phys.data$mt_reg)
+
+phys.data
+```
+```{r}
+
+### did this work?
+
+duplicated_levels <- duplicated(phys.data$mt_reg ) | duplicated(phys.data$mt_reg, fromLast = TRUE)
+if (any(duplicated_levels)) {
+  cat("Duplicate levels found in 'phys.data$mt_reg ' column:\n")
+  print(levels(phys.data$mt_reg)[duplicated_levels])
+}
+```
+
+```{r}
+# remove leading and trailing white spaces from type_color column
+phys.data$mt_reg <- trimws(phys.data$mt_reg)
+
+# check for duplicates after removing leading/trailing white spaces
+duplicated_levels <- duplicated(phys.data$mt_reg) | duplicated(phys.data$mt_reg, fromLast = TRUE)
+if (any(duplicated_levels)) {
+  cat("Duplicate levels found in 'mt_reg' column:\n")
+  print(levels(phys.data$mt_reg)[duplicated_levels])
+}
+
+phys.data
+
+phys.data$mt_reg  <- as.factor(phys.data$mt_reg)
+
+phys.data
+```
+```{r}
+###Let's only keep data for 36C
+phys.data_36 <- subset(phys.data, Treatment == 36.0)
+
+phys.data_36
+```
+```{r}
+phys.data_36_dead <- subset(phys.data_36, Chl == 0.00000000)
+
+phys.data_36_dead
+
+
+phys.data_36_dead_all <- subset(phys.data_36, Chl == 0.00000000)
+
+phys.data_36_dead_all
+```
+
+
+```{r}
+
+### Based on intial modelling of both mtORF and gulf fixed via mt_reg, Sean recommended we revert back to mtORF only as the fixed effect, and compare the thresholds and model behavior vs mt_reg
+
+###  An inner covariate can change within the sets of rows defined by the grouping factor. 
+### An outer covariate is invariant within the sets of rows defined by the grouping factor. Ordering of the groups is done in such a way as to preserve adjacency of groups with the same value of the outer variables; this is NOT the case for us, as within a single site, more than 1 mtORF
+
+phys.data.grouped <- groupedData(Chl ~ Treatment + 1|Site, inner = ~mtORF,
+                          data = phys.data)
+
+
+###This is because we need two separate, non-nested random effects and groupedData obj cannot handle that
+
+
+# Code the 3-parameter logistic:
+log.logist <- deriv(~dpar/(1+exp(bpar*(log(x)-log(epar)))),
+                    c("dpar","bpar","epar"), function(x,dpar,bpar,epar){})
+```
+
+
+```{r}
+### Initial Parameters (General) ----
+# Model with no fixed or random effects to get decent starting values for the
+# model parameters
+
+nls.fit.no.fr <- nls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                     start = c(dpar=100,bpar=26,epar=34.7),
+                     data = phys.data.grouped)
+
+summary(nls.fit.no.fr)
+```
+
+```{r}
+# Plot the observed and fitted values vs temperature
+
+with(phys.data.grouped,plot(Chl~Treatment))
+lines(c(28:39),predict(nls.fit.no.fr,list(Treatment=c(28:39))))
+
+## looks good! Bit of skew in the residuals, so will check further
+```
+
+
+```{r}
+
+### Determine the nonlinear (weighted) least-squares estimates of the parameters of a nonlinear model.
+
+no.fr.prediction <- data.frame(Treatment = 28:39, 
+                               Chl = predict(nls.fit.no.fr,list(Treatment=28:39)))
+
+no.fr.plot <- ggplot() + 
+  geom_point(data = phys.data.grouped,aes(x = Treatment, y = Chl),color = "steelblue") + 
+  geom_line(data = no.fr.prediction,aes(x = Treatment,y = Chl),color = "red",linewidth=1) + 
+  theme_bw()
+```
+
+```{r}
+no.fr.plot
+```
+
+```{r}
+
+# Take fitted parameters from previous fit to initialize parameter searches
+# for next fits
+
+start.pars <- coef(nls.fit.no.fr)
+
+start.pars
+```
+
+```{r}
+reg.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+gnls.fit.start.1 <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ Region, epar ~ Region),
+                       start = reg.start.pars,
+                       data = phys.data.grouped)
+start.pars.nls.reg <- coef(gnls.fit.start.1)
+```
+
+```{r}
+trydpar.start.pars <- c(rep(start.pars[1]),0,0,0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mt_reg, bpar ~ Region, epar ~ Region),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar <- coef(gnls.fit.start.dpar)
+```
+
+```{r}
+trybpar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,0,0,start.pars[3],0)
+gnls.fit.start.bpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ mt_reg, epar ~ Region),
+                       start = trybpar.start.pars,
+                       data = phys.data.grouped)
+start.pars.nls.bpar <- coef(gnls.fit.start.bpar)
+
+```
+
+```{r}
+tryepar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0,0,0)
+gnls.fit.start.epar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ Region, epar ~ mt_reg),
+                       start = tryepar.start.pars,
+                       data = phys.data.grouped)
+start.pars.nls.epar <- coef(gnls.fit.start.epar)
+```
+
+```{r}
+tryepar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+gnls.fit.start.epar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ Region, epar ~ mtORF),
+                       start = tryepar.start.pars,
+                       data = phys.data.grouped)
+start.pars.nls.epar.orf <- coef(gnls.fit.start.epar.orf)
+```
+
+```{r}
+trybpar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+gnls.fit.start.bpar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ mtORF, epar ~ Region),
+                       start = trybpar.start.pars,
+                       data = phys.data.grouped)
+start.pars.nls.bpar.orf <- coef(gnls.fit.start.bpar.orf)
+
+```
+
+```{r}
+trydpar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ Region, epar ~ Region),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.orf <- coef(gnls.fit.start.dpar.orf)
+```
+
+```{r}
+trydpar.bpar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.bpar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ Region),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.dpar.orf <- coef(gnls.fit.start.dpar.bpar.orf)
+```
+
+```{r}
+trydpar.bpar.epar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.bpar.epar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ mtORF),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.bpar.epar.orf <- coef(gnls.fit.start.dpar.bpar.epar.orf)
+```
+
+```{r}
+trydpar.epar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.epar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ Region, epar ~ mtORF),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.epar.orf <- coef(gnls.fit.start.dpar.epar.orf)
+```
+
+```{r}
+trybpar.epar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.bpar.epar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ mtORF, epar ~ mtORF),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.bpar.epar.orf <- coef(gnls.fit.start.bpar.epar.orf)
+```
+
+```{r}
+trydpar.bpar.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.bpar.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ Region),
+                       start = trydpar.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.bpar.orf <- coef(gnls.fit.start.dpar.bpar.orf)
+```
+
+```{r}
+## Sean's comments 
+###It looks like the problem is that the location of neither the threshold on the x-axis (epar), nor the threshold steepness (bpar), can be identified, but dpar can be.
+
+###I would suggest starting with coef(gnls.fit.start.dpar) as your starting fixed effects parameter values in the nlme model, and have only dpar vary according to mt_reg and let bpar and epar be functions of region.
+
+###Once you have the best nlme model, you could try using the update() function to replace Region with mt_reg one-by-one for bpar and/or epar to see if nlme converges where gnls failed.
+```
+
+```{r}
+
+##dpar mt_reg, bpar and epar Region
+
+nlme.fit.full.diag.dpar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ mt_reg, bpar ~ Region, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+
+nlme.fit.full.diag.bpar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region, bpar ~ mt_reg, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.bpar),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+
+##nlme.fit.full.diag.epar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+  ##                                fixed = list(dpar ~ Region, bpar ~ Region, epar ~ mt_reg),
+  ##                                random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+  ##                                data = phys.data.grouped,
+  ##                                method = "ML",
+  ##                               verbose = TRUE,
+  ##                                start = list(fixed = start.pars.nls.dpar),
+  ##                                control = list(maxIter = 200, msMaxIter = 200))
+
+###Warning: NaNs producedError in nlme.formula(Chl ~ log.logist(Treatment, dpar, bpar, epar), fixed = list(dpar ~  : 
+###  Singularity in backsolve at level 0, block 1
+
+### All Region for parameters
+nlme.fit.full.diag.region <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region, bpar ~ Region, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                 start = list(fixed = start.pars.nls.reg),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+```
+
+```{r}
+###mtORF all parameters
+nlme.fit.full.diag.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ mtORF),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar.bpar.epar.orf ),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+###mtORF dpar only, Region rest
+nlme.fit.full.diag.dpar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ mtORF, bpar ~ Region, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+###mtORF bpar only, Region rest
+nlme.fit.full.diag.bpar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region, bpar ~ mtORF, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.bpar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+###mtORF epar only, Region rest
+nlme.fit.full.diag.epar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region, bpar ~ Region, epar ~ mtORF),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.epar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+### mtORF b and d, Region e
+
+nlme.fit.full.diag.dpar.bpar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar.bpar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+
+
+### mtORF d and e, Region b
+
+nlme.fit.full.diag.dpar.epar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ mtORF, bpar ~ Region, epar ~ mtORF),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar.epar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+### mtORF b and e, Region d
+
+nlme.fit.full.diag.bpar.epar.mtORF <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region , bpar ~ mtORF, epar ~ mtORF),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.bpar.epar.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+```
+
+```{r}
+##Summary output for dpar mt_reg, bpar and epar Region
+summary(nlme.fit.full.diag.dpar)
+```
+
+```{r}
+##Summary output for Region all parameters
+summary(nlme.fit.full.diag.region)
+```
+
+```{r}
+anova(nlme.fit.full.diag.region, nlme.fit.full.diag.dpar, nlme.fit.full.diag.bpar, nlme.fit.full.diag.mtORF, nlme.fit.full.diag.dpar.mtORF, nlme.fit.full.diag.bpar.mtORF, nlme.fit.full.diag.epar.mtORF, nlme.fit.full.diag.dpar.bpar.mtORF, nlme.fit.full.diag.dpar.epar.mtORF, nlme.fit.full.diag.bpar.epar.mtORF)
+
+## Here, we have mt_reg and region in models, alongside similar structure where mtORF instead of mt_reg
+## See that model 2 and 3's analogs are 5 and 6 with mtORF, but interestingly the AIC for mt_Reg is over 2 AIC pts lower 
+
+### The winning model based on AIC is mt_reg only on bpar and rest region
+
+## But I want to look under the hood further, so let's plot mt_reg, Region, and mtORF and see model dynamics
+
+```
+```{r}
+## 1 March 2024 
+
+###Try code directly interaction mtorf and region effect on bpar
+
+trybpar.interaction.start.pars <- c(rep(start.pars[1]),0,start.pars[2],0,0,0,start.pars[3],0)
+
+gnls.fit.start.bpar.reg.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ mtORF * Region, epar ~ Region),
+                       start = trybpar.interaction.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.bpar.reg.orf <- coef(gnls.fit.start.bpar.reg.orf)
+
+head(start.pars.nls.bpar.reg.orf)
+```
+
+```{r}
+trydpar.interaction.start.pars <- c(rep(start.pars[1]),0,0,0,start.pars[2],0,start.pars[3],0)
+
+gnls.fit.start.dpar.reg.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF * Region, bpar ~ Region, epar ~ Region),
+                       start = trydpar.interaction.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.dpar.reg.orf <- coef(gnls.fit.start.dpar.reg.orf)
+
+head(start.pars.nls.dpar.reg.orf)
+
+```
+
+```{r}
+tryepar.interaction.start.pars <- c(rep(start.pars[1]),0, start.pars[2],0,start.pars[3],0,0,0)
+
+gnls.fit.start.epar.reg.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ Region, epar ~ mtORF * Region),
+                       start = tryepar.interaction.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.epar.reg.orf <- coef(gnls.fit.start.epar.reg.orf)
+
+head(start.pars.nls.epar.reg.orf)
+```
+
+```{r}
+try.full.interaction.start.pars <- c(rep(start.pars[1]),0,0,0, start.pars[2],0,0,0,start.pars[3],0,0,0)
+
+gnls.fit.start.full.interc.reg.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF * Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                       start = try.full.interaction.start.pars,
+                       data = phys.data.grouped)
+
+start.pars.nls.full.interc.reg.orf <- coef(gnls.fit.start.full.interc.reg.orf )
+
+head(start.pars.nls.full.interc.reg.orf)
+```
+
+
+```{r}
+
+### interaction effect region * mtORF
+
+nlme.fit.full.diag.orf.region.bpar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~ Region, bpar ~ mtORF * Region, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.bpar.reg.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.bpar)
+
+
+```
+
+
+```{r}
+nlme.fit.full.diag.orf.region.dpar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  mtORF * Region, bpar ~ Region, epar ~ Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.dpar.reg.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.dpar)
+```
+
+
+```{r}
+nlme.fit.full.diag.orf.region.epar <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  Region, bpar ~ Region, epar ~ mtORF * Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.epar.reg.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.epar)
+```
+
+```{r}
+nlme.fit.full.diag.orf.region.full <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  mtORF * Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.full.interc.reg.orf),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.full)
+```
+
+```{r}
+##Let's be complete and do all the permutations here with mtORF * Region
+
+##try.full.interaction.start.pars.d.b <- c(rep(start.pars[1]),0,0,0, start.pars[2],0,0,0,start.pars[3],0)
+
+##gnls.fit.start.interc.reg.orf.d.b <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+  ##                     params = list(dpar ~ mtORF * Region, bpar ~ mtORF * Region, epar ~ Region),
+  ##                     start = try.full.interaction.start.pars.d.b,
+  ##                     data = phys.data.grouped)
+
+##start.pars.nls.interc.reg.orf.d.b <- coef(try.full.interaction.start.pars.d.b)
+
+##head(start.pars.nls.interc.reg.orf.d.b)
+
+##Error in gnls(Chl ~ log.logist(Treatment, dpar, bpar, epar), params = list(dpar ~ :
+##step halving factor reduced below minimum in NLS step
+```
+```{r}
+
+try.full.interaction.start.pars.d.e <- c(rep(start.pars[1]),0,0,0, start.pars[2],0,start.pars[3],0,0,0)
+
+gnls.fit.start.interc.reg.orf.d.e <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF * Region, bpar ~ Region, epar ~ mtORF * Region),
+                       start = try.full.interaction.start.pars.d.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.interc.reg.orf.d.e <- coef(gnls.fit.start.interc.reg.orf.d.e)
+
+head(start.pars.nls.interc.reg.orf.d.e)
+
+```
+```{r}
+try.full.interaction.start.pars.b.e <- c(rep(start.pars[1]),0, start.pars[2],0,0,0,start.pars[3],0,0,0)
+
+gnls.fit.start.interc.reg.orf.b.e <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                       start = try.full.interaction.start.pars.b.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.interc.reg.orf.b.e <- coef(gnls.fit.start.interc.reg.orf.b.e)
+
+head(start.pars.nls.interc.reg.orf.b.e)
+
+```
+```{r}
+nlme.fit.full.diag.orf.region.d.e <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  mtORF * Region, bpar ~ Region, epar ~ mtORF * Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.d.e)
+```
+```{r}
+nlme.fit.full.diag.orf.region.b.e <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                                  random = list(Site = pdDiag(dpar+bpar+epar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+
+summary(nlme.fit.full.diag.orf.region.b.e)
+```
+
+
+```{r}
+###let's compare these models to each other, the iteractive vs previous one and one and dummy mt_reg
+
+anova(nlme.fit.full.diag.region, nlme.fit.full.diag.dpar, nlme.fit.full.diag.bpar, nlme.fit.full.diag.mtORF, nlme.fit.full.diag.dpar.mtORF, nlme.fit.full.diag.bpar.mtORF, nlme.fit.full.diag.epar.mtORF, nlme.fit.full.diag.dpar.bpar.mtORF, nlme.fit.full.diag.dpar.epar.mtORF, nlme.fit.full.diag.orf.region.bpar, nlme.fit.full.diag.bpar.epar.mtORF, nlme.fit.full.diag.orf.region.dpar, nlme.fit.full.diag.orf.region.epar, nlme.fit.full.diag.orf.region.d.e, nlme.fit.full.diag.orf.region.b.e, nlme.fit.full.diag.orf.region.full)
+```
+```{r}
+###Winner here is nlme.fit.full.diag.orf.region.b.e (AIC = 1816.302), which is >2AIC than next model which is nlme.fit.full.diag.orf.region.full (AIC = 1818.510)
+
+summary(nlme.fit.full.diag.orf.region.b.e)
+```
+
+```{r}
+### Region Fixed Effect Only ----
+nls.fit.mtorf.region <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ Region, epar ~ Region),
+                       start = list(fixed = start.pars.nls.reg),
+                       data = phys.data.grouped)
+
+treatment.vector <- rep(28:39,2)
+region.vector <- c(rep("Coiba",length(28:39)),rep("Las Perlas",length(28:39)))
+
+region.prediction <- data.frame(Region = region.vector,
+                                Treatment = treatment.vector, 
+                                Chl = predict(nls.fit.region,list(Treatment=treatment.vector,Region = region.vector)))
+
+region.plot.coiba <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$Region == "Coiba",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = region.prediction[region.prediction$Region == "Coiba",],aes(x = Treatment,y = Chl),color = "red",size=1) + 
+  labs(title = "Region Fixed Effect Only - Coiba", x = "Treatment (deg C)") +
+  theme_bw()
+
+region.plot.perlas <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$Region == "Las Perlas",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = region.prediction[region.prediction$Region == "Las Perlas",],aes(x = Treatment,y = Chl),color = "red",size=1) +
+  labs(title = "Region Fixed Effect Only - Las Perlas", x = "Treatment (deg C)") +
+  theme_bw()
+
+grid.arrange(region.plot.coiba,region.plot.perlas,nrow = 1)
+
+coiba3 <- region.plot.coiba +  ylim(0, 20)
+
+perlas3 <- region.plot.perlas +  ylim(0, 20)
+
+grid.arrange(coiba3, perlas3,nrow = 2)
+
+##Diagnostic plots
+
+hist(residuals(nls.fit.region))
+rug(residuals(nls.fit.region))
+plot(nls.fit.region)
+```
+```{r}
+### mtORF Fixed Effect Only ----
+nls.fit.orf <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF, bpar ~ mtORF, epar ~ mtORF),
+                       start = list(fixed = start.pars.nls.dpar.bpar.epar.orf),
+                       data = phys.data.grouped)
+
+treatment.vector <- rep(28:39,2)
+orf.vector <- c(rep("1",length(28:39)),rep("3",length(28:39)))
+
+orf.prediction <- data.frame(mtORF = orf.vector,
+                                Treatment = treatment.vector, 
+                                Chl = predict(nls.fit.orf,list(Treatment=treatment.vector,mtORF = orf.vector)))
+
+orf.plot.1 <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$mtORF == "1",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = orf.prediction[orf.prediction$mtORF == "1",],aes(x = Treatment,y = Chl),color = "red",size=1) + 
+  labs(title = "mtORF Fixed Effect Only - mtORF 1", x = "Treatment (deg C)") +
+  theme_bw()
+
+orf.plot.3 <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$mtORF == "3",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = orf.prediction[orf.prediction$mtORF == "3",],aes(x = Treatment,y = Chl),color = "red",size=1) +
+  labs(title = "mtORF Fixed Effect Only - mtORF 3", x = "Treatment (deg C)") +
+  theme_bw()
+
+grid.arrange(orf.plot.1,orf.plot.3,nrow = 1)
+
+mtorf1<- orf.plot.1 +  ylim(0, 20)
+
+mtorf3 <- orf.plot.3 +  ylim(0, 20)
+
+grid.arrange(mtorf1, mtorf3,nrow = 2)
+
+##Diagnostic plots
+
+hist(residuals(nls.fit.orf))
+rug(residuals(nls.fit.orf))
+plot(nls.fit.orf)
+```
+
+
+```{r}
+### mtORF * Region Fixed Effect Only ----
+nls.fit.mt_reg <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF * Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                       start = c(start.pars.nls.full.interc.reg.orf),
+                       data = phys.data.grouped)
+
+##nls.fit.mtorf.region <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+##                       params = list(dpar ~ Region, bpar ~ Region, epar ~ Region),
+##                       start = list(fixed = start.pars.nls.reg),
+##                       data = phys.data.grouped)
+
+treatment.vector <- rep(28:39,2)
+
+region.vector <- c(rep("Coiba",length(28:39)),rep("Las Perlas",length(28:39)))
+
+orf.vector <- c(rep("1",length(28:39)),rep("3",length(28:39)))
+
+orf.region.prediction <- data.frame(Region = region.vector,
+                                Treatment = treatment.vector, 
+                                Chl = predict(nls.fit.mt_reg,list(Treatment=treatment.vector,Region = region.vector, mtORF = orf.vector)))
+```
+
+```{r}
+
+region.plot.coiba <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$Region == "Coiba",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = region.prediction[region.prediction$Region == "Coiba",],aes(x = Treatment,y = Chl),color = "red",size=1) + 
+  labs(title = "Region Fixed Effect Only - Coiba", x = "Treatment (deg C)") +
+  theme_bw() + facet_wrap(~mtORF)
+
+region.plot.perlas <- ggplot() + 
+  geom_jitter(data = phys.data.grouped[phys.data.grouped$Region == "Las Perlas",],aes(x = Treatment, y = Chl),color = "steelblue",width = 0.5) + 
+  geom_line(data = region.prediction[region.prediction$Region == "Las Perlas",],aes(x = Treatment,y = Chl),color = "red",size=1) +
+  labs(title = "Region Fixed Effect Only - Las Perlas", x = "Treatment (deg C)") +
+  theme_bw() + facet_wrap(~mtORF)
+```
+
+```{r}
+grid.arrange(region.plot.coiba,region.plot.perlas,nrow = 1)
+
+coiba3 <- region.plot.coiba +  ylim(0, 20)
+
+perlas3 <- region.plot.perlas +  ylim(0, 20)
+
+grid.arrange(coiba3, perlas3,nrow = 2) 
+```
+
+```{r}
+
+##Diagnostic plots
+
+hist(residuals(nls.fit.mt_reg))
+rug(residuals(nls.fit.mt_reg))
+plot(nls.fit.mt_reg)
+```
+
+
+```{r}
+summary(nlme.fit.full.diag.orf.region.b.e)
+```
+
+
+```{r}
+##RE on e for Site lowest so drop first 
+
+nlme.fit.full.diag.orf.region.b.e.b.d <- update(summary(nlme.fit.full.diag.orf.region.b.e), method="ML",
+                             random = list(Site = pdDiag(bpar+dpar ~ 1)))
+
+summary(nlme.fit.full.diag.orf.region.b.e.b.d)
+
+anova(nlme.fit.full.diag.orf.region.b.e, nlme.fit.full.diag.orf.region.b.e.b.d)
+
+## these are exactly 2 away from each other
+```
+
+```{r}
+
+##Let's try all the permutations
+
+nlme.fit.full.diag.orf.region.b.e.b <- update(nlme.fit.full.diag.orf.region.b.e,method="ML",
+                             random = list(Site = pdDiag(bpar ~ 1)))
+
+nlme.fit.full.diag.orf.region.b.e.d <- update(nlme.fit.full.diag.orf.region.b.e,method="ML",
+                             random = list(Site = pdDiag(dpar ~ 1)))
+
+nlme.fit.full.diag.orf.region.b.e.e <- update(nlme.fit.full.diag.orf.region.b.e,method="ML",
+                             random = list(Site = pdDiag(epar ~ 1)))
+
+nlme.fit.full.diag.orf.region.b.e.d.e <- update(nlme.fit.full.diag.orf.region.b.e,method="ML",
+                             random = list(Site = pdDiag(dpar+epar ~ 1)))
+
+nlme.fit.full.diag.orf.region.b.e.b.e <- update(nlme.fit.full.diag.orf.region.b.e,method="ML",
+                             random = list(Site = pdDiag(bpar+epar ~ 1)))
+
+
+anova(nlme.fit.full.diag.orf.region.b.e, nlme.fit.full.diag.orf.region.b.e.b.d, nlme.fit.full.diag.orf.region.b.e.d.e, nlme.fit.full.diag.orf.region.b.e.b.e, nlme.fit.full.diag.orf.region.b.e.b, nlme.fit.full.diag.orf.region.b.e.d, nlme.fit.full.diag.orf.region.b.e.e)
+```
+
+```{r}
+###From comparing the AIC scores above, the score to "beat" is nlme.fit.full.diag.orf.region.b.e = 1816.302
+
+###Three models are more than 2 AIC apart, here nlme.fit.full.diag.orf.region.b.e.b / nlme.fit.full.diag.orf.region.b.e.d / nlme.fit.full.diag.orf.region.b.e.e, all with AIC = 	1812.302
+
+### These have identical AIC scores and number of parameters sooo ? 
+
+```
+
+```{r}
+###Let's inspect the summary more closely 
+
+summary(nlme.fit.full.diag.orf.region.b.e)
+```
+
+```{r}
+
+summary(nlme.fit.full.diag.orf.region.b.e.b)
+```
+
+```{r}
+
+summary(nlme.fit.full.diag.orf.region.b.e.d)
+
+```
+
+```{r}
+summary(nlme.fit.full.diag.orf.region.b.e.e)
+```
+
+```{r}
+### From summary(), when bpar is the random effect only (nlme.fit.full.diag.orf.region.b.e.b), the intercept value compared to the residual are more comparable, 0.01717568 versus 2.766104. However, for all other random effects the intercept is many orders of magnitude smaller vs residual.  
+
+
+### As such, we will move forward with nlme.fit.full.diag.orf.region.b.e.b
+
+##nlme.fit.full.diag.orf.region.b.e.b <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+##                                  fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+##                                  random = list(Site = pdDiag(bpar ~ 1)),
+##                                  data = phys.data.grouped,
+##                                  method = "ML",
+##                                  verbose = TRUE,
+##                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+##                                  control = list(maxIter = 200, msMaxIter = 200))
+
+```
+
+```{r}
+summary(nlme.fit.full.diag.orf.region.b.e.b)
+```
+
+
+```{r}
+### From the t-statistic, given it is the smallest for bpar, let's drop this fixed effect first, using as our base model nlme.fit.full.diag.orf.region.b.e.b :
+
+### fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+
+start.pars.d.e <- c(rep(start.pars[1]),0,start.pars[2],start.pars[3],0,0,0)
+
+gnls.fit.start.dpar.epar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ 1, epar ~ mtORF * Region),
+                       start = start.pars.d.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.d.e <- coef(gnls.fit.start.dpar.epar)
+
+
+nlme.fit.full.diag.orf.region.d.e <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ Region, bpar ~ 1, epar ~ mtORF * Region), 
+                              start = start.pars.nls.d.e)
+
+```
+
+```{r}
+##Next smallest t-valye is dpar so let's drop just this one 
+
+
+start.pars.b.e <- c(rep(start.pars[1]),start.pars[2],0,0,0,start.pars[3],0,0,0)
+
+### fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+
+
+gnls.fit.start.bpar.epar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                       start = start.pars.b.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.b.e <- coef(gnls.fit.start.bpar.epar)
+
+
+nlme.fit.full.diag.orf.region.b.e <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ mtORF * Region, epar ~ mtORF * Region), 
+                              start = start.pars.b.e)
+```
+
+```{r}
+
+##Lastly let's drop epar
+
+start.pars.d.b <- c(rep(start.pars[1]),0, start.pars[2],0,0,0,start.pars[3])
+
+### fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+
+
+gnls.fit.start.dpar.bpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                      params = list(dpar ~ Region, bpar ~ mtORF * Region, epar ~ 1),
+                       start = start.pars.d.b,
+                      data = phys.data.grouped)
+
+###Error in gnls(Chl ~ log.logist(Treatment, dpar, bpar, epar), params = list(dpar ~ :
+##step halving factor reduced below minimum in NLS step
+
+start.pars.nls.d.b <- coef(gnls.fit.start.dpar.bpar)
+
+
+nlme.fit.full.diag.orf.region.d.b <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                               fixed = list(dpar ~ Region, bpar ~ mtORF * Region, epar ~ 1), 
+                              start = start.pars.nls.d.b)
+
+
+```
+
+```{r}
+### Why not try fixed region on a single term at a time? 
+
+
+start.pars.d <- c(rep(start.pars[1]),0,start.pars[2],start.pars[3])
+
+gnls.fit.start.dpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ Region, bpar ~ 1, epar ~ 1),
+                       start = start.pars.d,
+                       data = phys.data.grouped)
+
+start.pars.nls.d <- coef(gnls.fit.start.dpar)
+
+nlme.fit.full.diag.dpar.b.d.random.d <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ Region, bpar ~ 1, epar ~ 1), 
+                              start = start.pars.nls.d)
+```
+
+```{r}
+### Region alone, only bpar
+
+start.pars.b <- c(rep(start.pars[1]),start.pars[2],0,start.pars[3])
+
+gnls.fit.start.bpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ Region, epar ~ 1),
+                       start = start.pars.b,
+                       data = phys.data.grouped)
+
+start.pars.nls.b <- coef(gnls.fit.start.bpar)
+
+nlme.fit.full.diag.dpar.b.d.random.b <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ Region, epar ~ 1), 
+                              start = start.pars.nls.b)
+```
+
+```{r}
+
+##now region only and solely epar
+
+start.pars.e <- c(rep(start.pars[1]),start.pars[2],start.pars[3],0)
+
+gnls.fit.start.epar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ 1, epar ~ Region),
+                       start = start.pars.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.e <- coef(gnls.fit.start.epar)
+
+nlme.fit.full.diag.dpar.b.d.random.e <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ 1, epar ~ Region), 
+                              start = start.pars.nls.e )
+```
+
+
+```{r}
+
+##repeat with mtORF * Region alone per term
+
+#dpar
+
+start.pars.mtorf.region.d <- c(rep(start.pars[1]),0,0,0,start.pars[2],start.pars[3])
+
+gnls.fit.start.mtorf.region.d <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF * Region, bpar ~ 1, epar ~ 1),
+                       start = start.pars.mtorf.region.d,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.region.d <- coef(gnls.fit.start.mtorf.region.d)
+
+nlme.fit.full.mtorf.region.d <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ mtORF * Region, bpar ~ 1, epar ~ 1), 
+                              start = start.pars.nls.mtorf.region.d)
+##bpar
+
+start.pars.mtorf.region.b <- c(rep(start.pars[1]),start.pars[2],0,0,0,start.pars[3])
+
+gnls.fit.start.mtorf.region.b <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ mtORF * Region, epar ~ 1),
+                       start = start.pars.mtorf.region.b,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.region.b <- coef(gnls.fit.start.mtorf.region.b)
+
+nlme.fit.full.mtorf.region.b <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ mtORF * Region, epar ~ 1), 
+                              start = start.pars.nls.mtorf.region.b)
+
+### Error in gnls(Chl ~ log.logist(Treatment, dpar, bpar, epar), params = list(dpar ~  : 
+  ###step halving factor reduced below minimum in NLS step
+  
+  
+###epar
+
+start.pars.mtorf.region.e <- c(rep(start.pars[1]),start.pars[2],start.pars[3],0,0,0)
+
+gnls.fit.start.mtorf.region.e <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ 1, epar ~ mtORF * Region),
+                       start = start.pars.mtorf.region.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.region.e <- coef(gnls.fit.start.mtorf.region.e)
+
+nlme.fit.full.mtorf.region.e <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ 1, epar ~ mtORF * Region), 
+                              start = start.pars.nls.mtorf.region.e)
+```
+
+```{r}
+##repeat with mtORF alone per term
+
+#dpar
+
+start.pars.mtorf.d <- c(rep(start.pars[1]),0,start.pars[2],start.pars[3])
+
+gnls.fit.start.mtorf.d <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ mtORF , bpar ~ 1, epar ~ 1),
+                       start = start.pars.mtorf.d,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.d <- coef(gnls.fit.start.mtorf.d)
+
+nlme.fit.full.mtorf.d <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ mtORF, bpar ~ 1, epar ~ 1), 
+                              start = start.pars.nls.mtorf.d)
+##bpar
+
+start.pars.mtorf.b <- c(rep(start.pars[1]),start.pars[2],0,start.pars[3])
+
+gnls.fit.start.mtorf.b <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ mtORF, epar ~ 1),
+                       start = start.pars.mtorf.b,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.b <- coef(gnls.fit.start.mtorf.b)
+
+nlme.fit.full.mtorf.b <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ mtORF, epar ~ 1), 
+                              start = start.pars.nls.mtorf.b)
+
+###epar
+
+start.pars.mtorf.e <- c(rep(start.pars[1]),start.pars[2],start.pars[3],0)
+
+gnls.fit.start.mtorf.e <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                       params = list(dpar ~ 1, bpar ~ 1, epar ~ mtORF),
+                       start = start.pars.mtorf.e,
+                       data = phys.data.grouped)
+
+start.pars.nls.mtorf.e <- coef(gnls.fit.start.mtorf.e)
+
+nlme.fit.full.mtorf.e <- update(nlme.fit.full.diag.orf.region.b.e.b, method="ML",
+                              fixed = list(dpar ~ 1, bpar ~ 1, epar ~ mtORF), 
+                              start = start.pars.nls.mtorf.e)
+```
+
+```{r}
+aic_loglik_topchlmodels <- anova(nlme.fit.full.diag.orf.region.b.e.b, nlme.fit.full.diag.orf.region.d.e, nlme.fit.full.diag.orf.region.b.e, nlme.fit.full.diag.orf.region.d.b, nlme.fit.full.diag.dpar.b.d.random.d, nlme.fit.full.diag.dpar.b.d.random.b, nlme.fit.full.diag.dpar.b.d.random.e, nlme.fit.full.mtorf.region.d, nlme.fit.full.mtorf.region.e, nlme.fit.full.mtorf.d, nlme.fit.full.mtorf.b, nlme.fit.full.mtorf.e)
+
+aic_loglik_topchlmodels 
+
+### Okay, so by a landslide the original is best, where fixed effects of dpar ~ Region, bpar ~ mtORF * Region and epar ~ mtORF * Region; only random effect site on bpar
+```
+
+```{r}
+write.csv(aic_loglik_topchlmodels, "C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\aic_loglik_chl_topmodels.csv")
+```
+
+
+```{r}
+summary(nlme.fit.full.diag.orf.region.b.e.b)
+```
+
+```{r}
+### According to Sean ... "Once you have the best nlme model, you could try using the update() function to replace Region with mt_reg one-by-one for bpar and/or epar to see if nlme converges where gnls failed."
+
+##nlme.fit.full.diag.orf.region.b.e.b <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+##                                  fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+##                                  random = list(Site = pdDiag(bpar ~ 1)),
+##                                  data = phys.data.grouped,
+##                                  method = "ML",
+##                                  verbose = TRUE,
+##                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+##                                  control = list(maxIter = 200, msMaxIter = 200))
+```
+
+```{r}
+# As a sanity check, let's rerun our current best nlme model
+
+nlme.fit.full.diag.orf.region.b.e.b <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                                  fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                                  random = list(Site = pdDiag(bpar ~ 1)),
+                                  data = phys.data.grouped,
+                                  method = "ML",
+                                  verbose = TRUE,
+                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+                                  control = list(maxIter = 200, msMaxIter = 200))
+```
+
+```{r}
+### Let's try to add dpar = mtORF * Region
+
+
+start.pars.all.mtreg.dpar <- c(rep(start.pars[1]),0,0,0,start.pars[2],0,0,0,start.pars[3],0,0,0)
+
+gnls.fit.start.dpar <- gnls(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+                     params = list(dpar ~ mtORF * Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+                       start = start.pars.all.mtreg.dpar,
+                       data = phys.data.grouped)
+
+### or in gnls(Chl ~ log.logist(Treatment, dpar, bpar, epar), params = list(dpar ~ :
+### step halving factor reduced below minimum in NLS step
+
+start.pars.mtreg.dpar <- coef(gnls.fit.start.dpar)
+
+##nlme.fit.full.diag.bpar.mtreg <- update(nlme.fit.full.diag.dpar.b.d.random.b.e, method="ML",
+##                              fixed = list(dpar ~ mtORF * Region, bpar ~ mtORF * Region, epar ~ mtORF * Region), 
+##                              start = start.pars.mtreg.dpar)
+
+##Error in nlme.formula(model = Prot ~ log.logist(Treatment, dpar, bpar, :
+##Singularity in backsolve at level 0, block 1
+```
+
+
+```{r}
+## SO AS IT STANDS, BEST MODEL IS nlme.fit.full.diag.bpar.b
+
+### epar, the 50% temp threshold
+### dpar, the max chl
+### bpar, threshold steepness
+
+
+##nlme.fit.full.diag.orf.region.b.e.b <- nlme(Chl ~ log.logist(Treatment,dpar,bpar,epar),
+##                                  fixed = list(dpar ~  Region, bpar ~ mtORF * Region, epar ~ mtORF * Region),
+##                                  random = list(Site = pdDiag(bpar ~ 1)),
+##                                  data = phys.data.grouped,
+##                                  method = "ML",
+##                                  verbose = TRUE,
+##                                  start = list(fixed = start.pars.nls.interc.reg.orf.d.e),
+##                                  control = list(maxIter = 200, msMaxIter = 200))
+
+coef(nlme.fit.full.diag.orf.region.b.e.b)
+
+#Background, from Sean's "culled" script for context
+
+#  Fv               dpar
+#  -- = -------------------------------
+#  Fm  1+exp(bpar*(log(x)-log(epar)))
+# 
+# dpar is the asymptotic Fv/Fm (i.e. Fv/Fm in the absence of heat stress)
+# epar is the inflection point: temp where Fv/Fm has declined to 50% of dpar
+# bpar regulates the sharpness of the threshold (higher bpar->steeper threshold)
+#
+# Region (Perlas vs Coiba) provides the only fixed effects (possible
+#        fixed effect on each of the three model parameters)
+# Site within region and multi-locus genotypes (mtORFs) within site are the possible
+#      random effects. Again, consider possible random effects on each
+#      model parameter
+#
+# This script uses nls for fixed-effect only models and nlme for mixed-effects
+#      models
+
+```
+
+```{r}
+summary(nlme.fit.full.diag.orf.region.b.e.b)
+```
+
+```{r}
+##Let's plot predictions
+
+head(phys.data.grouped)
+```
+
+```{r}
+
+### let's try to deal with two different variables for fixed eff
+
+
+# Create a prediction data frame with all combinations of mt_reg, Region, Treatment, and Site
+pred_data <- Chl_subset <- phys.data.grouped[c("Region", "Site", "mtORF", "Treatment")]
+
+
+pred_data
+
+###The predictions at level i are obtained by adding together the population predictions (based only on the fixed effects estimates) and the estimated contributions of the random effects to the predictions at grouping levels less or equal to i. The resulting values estimate the best linear unbiased predictions (BLUPs) at level i. If group values not included in the original grouping factors are present in newdata, the corresponding predictions will be set to NA for levels greater or equal to the level at which the unknown groups occur.
+
+###If you specify level=0 as part of your first predict call (without subject) then it will give the prediction at the population level and not need a subject number.
+
+```
+
+```{r}
+chl_predict_nlme_fixed <- predict(nlme.fit.full.diag.orf.region.b.e.b, pred_data, se.fit = TRUE,
+        interval = "confidence", level = 0, type = "response", na.action = na.omit)
+
+chl_predict_nlme_fixed
+
+head(chl_predict_nlme_fixed)
+```
+
+```{r}
+
+chl_predict_nlme_random <- predict(nlme.fit.full.diag.orf.region.b.e.b, pred_data, se.fit = TRUE,
+        interval = "confidence", level = 1, type = "response", na.action = na.omit)
+
+chl_predict_nlme_random
+```
+
+```{r}
+###Let's plot
+
+chl.predict.plot <- cbind(pred_data, chl_predict_nlme_fixed, chl_predict_nlme_random)
+
+chl.predict.plot
+```
+
+```{r}
+
+###original code from SRC script
+
+simple_plot <- function(z,prediction.data)
+{
+  t <- prediction.data[prediction.data$Region == z$Region[1],]
+  effect.plot <- ggplot() +
+    geom_point(data = z,aes(x = Treatment, y = Chl),color = "darkslategray") +
+    geom_line(data = t,aes(x = Treatment, y = chl_predict_nlme_fixed),color = "blue",size=2) + 
+    geom_line(data = t,aes(x = Treatment, y = chl_predict_nlme_random),color = "red",size=1) + 
+    labs(x = "Treatment (deg C)",y = "Chl") +
+    theme_bw() +
+    facet_grid(mt_reg ~ Site) +
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+          strip.text = element_text(size = 12)) +
+    scale_x_continuous(breaks = unique(z$Treatment))
+}
+
+coiba.data <- phys.data[phys.data$Region == "Coiba" , ]
+perlas.data <- phys.data[phys.data$Region == "Las Perlas", ]
+
+p.coiba <- simple_plot(coiba.data,chl.predict.plot)
+p.perlas <- simple_plot(perlas.data,chl.predict.plot)
+
+# SHOWING PLOTS IN THE CONSOLE.
+p.coiba
+
+p.perlas
+
+
+
+```
+
+```{r}
+###plot all sites together in a single "region" grid 
+
+# Define a color palette for the sites
+site_colors <- c("B. Damas" = "#FA94E6", "C. Afuera" = "magenta", "Uvas" = "#FF0061", "Mogo mogo" = "#00A6FF", "Saboga" = "#0023FF")
+
+### Set y-axis limits so same for both regions
+
+ y_limits <- c(0, 20)  # Adjust the limits as needed
+
+simple_plot <- function(z, prediction.data) {
+ 
+   region <- z$Region[1]
+  region_data <- prediction.data[prediction.data$Region == region, ]
+ 
+   mtORF <- z$mtORF[1]
+  mtorf_data <- prediction.data[prediction.data$mtORF == mtORF,  ]
+  
+  effect.plot <- ggplot() +
+    geom_point(data = z, aes(x = Treatment, y = Chl, color = Site)) +
+    geom_line(data = region_data, aes(x = Treatment, y = chl_predict_nlme_fixed), size = 2) + 
+    geom_line(data = region_data, aes(x = Treatment, y = chl_predict_nlme_random, color = Site), size = 1) + 
+    geom_line(data = region_data, aes(x = Treatment, y = chl_predict_nlme_fixed, linetype = "mtORF x Region"), size = 1, color = "black") + 
+    labs(x = "Temperature, Celsius", y = "Chl") +
+    theme_bw() +
+    facet_grid(~ Region + mtORF) +
+    theme(axis.text = element_text(size = 12),
+          axis.title = element_text(size = 12),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+          strip.text = element_text(size = 12)) +
+    scale_x_continuous(breaks = unique(z$Treatment)) +
+    scale_color_manual(values = site_colors, name = "Site") +
+    coord_cartesian(ylim = y_limits) +
+    guides(color = guide_legend(override.aes = list(linetype = c("solid")))) 
+  
+  
+  return(effect.plot)
+}
+
+# Subset data for "Coiba" and "Las Perlas" regions
+coiba.data <- phys.data[phys.data$Region == "Coiba", ]
+perlas.data <- phys.data[phys.data$Region == "Las Perlas", ]
+
+# Call simple_plot function for each region
+p.coiba <- simple_plot(coiba.data, chl.predict.plot)
+p.perlas <- simple_plot(perlas.data, chl.predict.plot)
+
+# Show plots in the console
+grid.arrange(p.coiba, p.perlas)
+
+```
+
+
+```{r}
+#############################
+# FOR THE END OF THE DAY:
+save.image(file="CBASS_chl_modelling_21Feb2024_Session.Rdata")
+##############################
+````
+
