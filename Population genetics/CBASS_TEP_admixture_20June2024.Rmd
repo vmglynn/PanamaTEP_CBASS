@@ -1,0 +1,307 @@
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+CVs <- read.table("~/holobiont_2020-2021/PCA_19Sep2022/admixture/CV_19Sep2022.csv", sep = " ")
+
+CVs <- CVs[, 3:4] 
+
+## drop the first two columns
+## Remove the formatting around the K values
+
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\(K=",
+                replacement = "")
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\):",
+                replacement = "") 
+head(CVs)
+
+set.seed(17272)
+```
+
+```{r}
+plot(CVs, xlab = "K", ylab = "CV error")
+```
+
+```{r}
+ad2 <- read.table("pop.admix.2.Q")
+head(ad2)
+
+ad3 <- read.table("pop.admix.3.Q")
+head(ad3)
+
+ad6 <- read.table("pop.admix.6.Q")
+head(ad6)
+
+ad4 <- read.table("pop.admix.4.Q")
+head(ad4)
+
+ad5 <- read.table("pop.admix.5.Q")
+head(ad5)
+```
+
+```{r}
+popmap <- read.csv("popmap_v2.csv", fileEncoding="UTF-8-BOM")
+head(popmap)
+```
+
+```{r}
+ad2_pop <- cbind(popmap, ad2)
+head(ad2_pop)
+```
+
+```{r}
+ad3_pop <- cbind(popmap, ad3)
+head(ad3_pop)
+```
+```{r}
+ad6_pop <- cbind(popmap, ad6)
+head(ad6_pop)
+write.csv(ad6_pop, "admixture_pop6_13Jan2023.csv")
+```
+
+```{r}
+ad4_pop <- cbind(popmap, ad4)
+head(ad4_pop)
+```
+```{r}
+ad5_pop <- cbind(popmap, ad5)
+head(ad5_pop)
+```
+
+```{r}
+ad2_pop <- ad2_pop[order(ad2_pop$popnum), ]
+
+ad3_pop <- ad3_pop[order(ad3_pop$popnum), ]
+
+ad4_pop <- ad4_pop[order(ad4_pop$popnum), ]
+
+ad5_pop <- ad5_pop[order(ad5_pop$popnum), ]
+
+ad6_pop <- ad6_pop[order(ad6_pop$popnum), ]
+```
+
+```{r}
+colorBlindGrey   <- c("#999999", "#E69F00", "#56B4E9", "#009E73", 
+                       "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+```{r}
+barplot(t(as.matrix(ad2_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+
+xlabels_ad2 <- aggregate(1:nrow(ad2_pop),
+                    by = list(ad2_pop[, "popname"]),
+                    FUN = mean)
+xlabels_ad2
+```
+
+```{r}
+
+sampleEdges2 <- aggregate(1:nrow(ad2_pop),
+                        by = list(ad2_pop[, "popname"]), 
+                        FUN = max)
+sampleEdges2
+```
+
+```{r}
+
+k2 <- barplot(t(as.matrix(ad2_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges2$x, lwd = 2)
+axis(1, at = xlabels_ad2$x - 0.05, labels = xlabels_ad2$Group.1)
+
+k2
+
+ggsave("k2.png")
+```
+
+```{r}
+barplot(t(as.matrix(ad3_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+xlabels3 <- aggregate(1:nrow(ad3_pop),
+                    by = list(ad3_pop[, "popname"]),
+                    FUN = mean)
+xlabels3
+```
+```{r}
+sampleEdges3<- aggregate(1:nrow(ad3_pop),
+                        by = list(ad3_pop[, "popname"]), 
+                        FUN = max)
+sampleEdges3
+```
+```{r}
+k3 <- barplot(t(as.matrix(ad3_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges3$x, lwd = 3)
+axis(1, at = xlabels3$x + 0.5, labels = xlabels3$Group.1)
+
+k3
+
+ggsave("k3.png")
+```
+
+
+```{r}
+xlabels6 <- aggregate(1:nrow(ad6_pop),
+                    by = list(ad6_pop[, "popname"]),
+                    FUN = mean)
+xlabels6
+```
+
+```{r}
+sampleEdges6<- aggregate(1:nrow(ad6_pop),
+                        by = list(ad6_pop[, "popname"]), 
+                        FUN = max)
+sampleEdges6
+```
+
+```{r}
+k6_reef <- barplot(t(as.matrix(ad6_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE, legend = TRUE)
+abline(v = sampleEdges3$x, lwd = 3)
+axis(1, at = xlabels6$x + 0.5, labels = xlabels6$Group.1)
+
+k6_reef
+
+ggsave("k6_reef.png")
+```
+
+```{r}
+
+k6 <- barplot(t(as.matrix(ad6_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=TRUE, axisnames = FALSE, legend = TRUE)
+abline(v = sampleEdges6$x, lwd = 3)
+axis(1, at = xlabels6$x + 0.5, labels = xlabels6$Group.1)
+
+k6
+
+ggsave("k6.png")
+```
+
+```{r}
+ad6_pop
+```
+
+
+```{r}
+barplot(t(as.matrix(ad4_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+xlabels4 <- aggregate(1:nrow(ad4_pop),
+                    by = list(ad4_pop[, "popname"]),
+                    FUN = mean)
+xlabels4
+```
+
+```{r}
+sampleEdges4<- aggregate(1:nrow(ad4_pop),
+                        by = list(ad4_pop[, "popname"]), 
+                        FUN = max)
+sampleEdges4
+```
+
+```{r}
+
+k4 <- barplot(t(as.matrix(ad4_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges4$x, lwd = 3)
+axis(1, at = xlabels4$x + 0.5, labels = xlabels4$Group.1)
+
+k4
+
+ggsave("k4.jpg")
+```
+
+```{r}
+###What would the divisions look like if we think about mtORF? 
+
+popmap_mt <- read.csv("popmap_mt.csv", fileEncoding="UTF-8-BOM")
+head(popmap_mt)
+
+```
+
+```{r}
+ad6_mt <- cbind(popmap_mt, ad6)
+head(ad6_mt)
+```
+
+```{r}
+barplot(t(as.matrix(ad6_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+xlabels6 <- aggregate(1:nrow(ad6_mt),
+                    by = list(ad6_mt[, "popname"]),
+                    FUN = mean)
+xlabels6
+```
+
+```{r}
+sampleEdges6<- aggregate(1:nrow(ad6_mt),
+                        by = list(ad6_mt[, "popname"]), 
+                        FUN = max)
+sampleEdges6
+```
+
+```{r}
+k6_mt <- barplot(t(as.matrix(ad6_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges6$x, lwd = 3)
+axis(1, at = xlabels6$x + 0.5, labels = xlabels6$Group.1)
+
+k6_mt
+
+ggsave("k6.png")
+```
+```{r}
+barplot(t(as.matrix(ad5_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+xlabels5 <- aggregate(1:nrow(ad5_pop),
+                    by = list(ad5_pop[, "popname"]),
+                    FUN = mean)
+xlabels5
+```
+
+```{r}
+sampleEdges5<- aggregate(1:nrow(ad5_pop),
+                        by = list(ad5_pop[, "popname"]), 
+                        FUN = max)
+sampleEdges5
+```
+
+```{r}
+
+k5 <- barplot(t(as.matrix(ad5_pop[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges5$x, lwd = 3)
+axis(1, at = xlabels5$x + 0.5, labels = xlabels5$Group.1)
+
+k5
+
+ggsave("k5.jpg")
+```
+
+
