@@ -1,0 +1,1040 @@
+
+```{r}
+set.seed(1233)
+```
+
+```{r}
+###read in LPO data from cBASS
+
+LPO <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\LPO_fulldata_CBASS_2023.csv")
+LPO
+
+##Remove NA rows
+LPO <- na.omit(LPO)
+
+LPO
+
+###Redefine column classes
+
+LPO$mtORF <- as.factor(LPO$mtORF)
+
+LPO$Colony <- as.factor(LPO$Colony)
+
+LPO$MLG <- as.factor(LPO$MLG)
+
+LPO 
+```
+
+```{r}
+###Let's first visualize trends per site across temps
+
+library("ggplot2")
+library("dplyr")
+
+## Simple scatterplot, where site is ~facet_wrap()
+
+ggplot(LPO, aes(x = Temp, y = LPO)) + 
+  geom_point() +
+  facet_wrap(~Site) + ylab("LPO (µM MDA/ mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+```
+
+```{r}
+##Let's filter the data based on Region and mtORF
+LPO_C <- LPO %>%
+  filter(Region == "Chiriqui")
+LPO_C
+
+LPO_P <- LPO %>%
+  filter(Region == "Panama")
+LPO_P
+```
+
+```{r}
+##For Panama
+
+ggplot(LPO_P, aes(x = Temp, y = LPO)) + 
+  geom_point() +
+  facet_wrap(~Site + mtORF) + ylab("LPO (µM MDA/ mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+
+##For Chiriqui
+
+ggplot(LPO_C, aes(x = Temp, y = LPO)) + 
+  geom_point() +
+  facet_wrap(~Site + mtORF) + ylab("LPO (ÂµM MDA/ mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+
+```
+```{r}
+###Let's draw histograms for the data on LPO distribution
+
+hist(LPO$LPO)
+```
+```{r}
+#Seems slightly right skewed -- let's log transform 
+
+LPO$logLPO=log(LPO$LPO)
+
+head(LPO)
+
+hist(LPO$logLPO)
+```
+
+```{r}
+###Let's try square root
+LPO$sqrtLPO=sqrt(LPO$LPO)
+
+head(LPO)
+
+hist(LPO$sqrtLPO)
+
+#### log does a better job at ~normal 
+```
+```{r}
+####From talking to Sean:
+#####(1) Try temp as categorical
+#####(2) Now try models above where temp + mtorf, temp + region, and temp alone
+```
+```{r}
+### Change temp to categorical 
+
+LPO$Site = as.factor(LPO$Site)
+
+LPO$Temp = as.factor(LPO$Temp)
+
+###New models temp as categ
+
+LPO_lm_temp_cat_int.orfr = lm(logLPO ~ Temp + Region * mtORF, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.orf = lm(logLPO ~ Temp + mtORF, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.r = lm(logLPO ~ Temp + Region, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp = lm(logLPO ~ Temp, data = LPO, na.action = na.exclude)
+
+LPO_lm_notemp = lm(logLPO ~ mtORF * Region, data = LPO, na.action = na.exclude)
+```
+
+```{r}
+
+###Now compare model fits, plus model just temp for point of comparison
+
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.r, LPO_lm_temp_cat_int.orf,  LPO_lm_notemp, LPO_lm_temp_cat_int.orfr)
+```
+
+```{r}
+##Let's do pairwise comparisons
+
+####Vs temp only
+anova(LPO_lm_temp,  LPO_lm_notemp)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.r)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.orf)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.orfr)
+
+###Vs temp and region
+
+anova(LPO_lm_temp_cat_int.r, LPO_lm_temp_cat_int.orf)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_notemp)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_temp_cat_int.orfr)
+
+### Vs temp and orf
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_notemp)
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_temp_cat_int.orfr)
+
+###Vs temp reg * orf
+anova(LPO_lm_temp_cat_int.orfr, LPO_lm_notemp)
+
+```
+
+```{r}
+summary(LPO_lm_temp)
+```
+
+```{r}
+summary(LPO_lm_temp_cat_int.orfr)
+```
+
+```{r}
+summary(LPO_lm_temp_cat_int.orf)
+```
+
+```{r}
+summary(LPO_lm_temp_cat_int.r)
+```
+```{r}
+summary(LPO_lm_notemp)
+```
+
+
+```{r}
+plot(LPO_lm_temp_cat_int.r)
+```
+
+```{r}
+plot(LPO_lm_temp_cat_int.orf)
+```
+
+```{r}
+plot(LPO_lm_temp)
+```
+```{r}
+plot(LPO_lm_notemp)
+```
+
+```{r}
+plot(LPO_lm_temp_cat_int.orfr)
+```
+
+```{r}
+###Let's see histograms
+
+hist(resid(LPO_lm_temp))
+
+hist(resid(LPO_lm_temp_cat_int.orf))
+
+hist(resid(LPO_lm_temp_cat_int.r))
+
+hist(resid(LPO_lm_notemp))
+
+hist(resid(LPO_lm_temp_cat_int.orfr))
+
+```
+
+```{r}
+###For a sanity check, let us make sure of two things
+#### (1) we do not see from the residual plots that all the mtORF and/or Regions pts systematically clustering/different
+#### (2) the influence.measures, even though leverage plot would suggest residuals do not have high leverage in model fit 
+
+```
+
+```{r}
+###Let's begin with (2), the influence.measures
+
+influence.measures(LPO_lm_temp)
+
+influence.measures(LPO_lm_temp_cat_int.orf)
+
+influence.measures(LPO_lm_temp_cat_int.r)
+
+influence.measures(LPO_lm_notemp)
+
+influence.measures(LPO_lm_temp_cat_int.orfr)
+```
+
+```{r}
+###Now color code the residuals for the temp + region, temp + mtORF, and mtORF * Region, temp + region * ORF, and temp alone
+
+LPO$Region = as.factor(LPO$Region)
+
+plot(residuals(LPO_lm_temp_cat_int.orf), col = LPO$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$Region), fill = unique(LPO$Region))
+```
+```{r}
+LPO$mtORF = as.factor(LPO$mtORF)
+
+LPO$Region = as.factor(LPO$Region)
+
+###Color by mtORF
+
+plot(residuals(LPO_lm_notemp), col = LPO$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$mtORF), fill = unique(LPO$mtORF))
+
+###Color region
+
+plot(residuals(LPO_lm_notemp), col = LPO$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$Region), fill = unique(LPO$Region))
+```
+
+```{r}
+LPO$mtORF = as.factor(LPO$mtORF)
+
+LPO$Region = as.factor(LPO$Region)
+
+###Color by mtORF
+
+plot(residuals(LPO_lm_temp_cat_int.orfr), col = LPO$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$mtORF), fill = unique(LPO$mtORF))
+
+###Color region
+
+plot(residuals(LPO_lm_temp_cat_int.orfr), col = LPO$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$Region), fill = unique(LPO$Region))
+```
+
+```{r}
+###okay from talking to Sean:
+#### (1) run models with just region alone and mtORF alone
+#### (2) plot these residuals and color code to see if region encapsulates mtORF trends, and vice versa 
+```
+
+```{r}
+###New models temp as categ
+
+LPO_lm_temp_cat_int.orfr = lm(logLPO ~ Temp + Region * mtORF, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.orf = lm(logLPO ~ Temp + mtORF, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.r = lm(logLPO ~ Temp + Region, data = LPO, na.action = na.exclude)
+
+LPO_lm_mtORF = lm(logLPO ~ mtORF, data = LPO, na.action = na.exclude)
+
+LPO_lm_Region = lm(logLPO ~ Region, data = LPO, na.action = na.exclude)
+
+LPO_lm_notemp = lm(logLPO ~ mtORF * Region, data = LPO, na.action = na.exclude)
+
+LPO_lm_temp = lm(logLPO ~ Temp, data = LPO, na.action = na.exclude)
+
+```
+
+```{r}
+##Let's do pairwise comparisons
+
+####Vs temp only
+anova(LPO_lm_temp,  LPO_lm_notemp)
+anova(LPO_lm_temp, LPO_lm_mtORF)
+anova(LPO_lm_temp, LPO_lm_Region)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.r)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.orf)
+anova(LPO_lm_temp, LPO_lm_temp_cat_int.orfr)
+
+```
+
+````{r}
+###Vs temp and region
+
+
+anova(LPO_lm_temp_cat_int.r, LPO_lm_notemp)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_mtORF)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_Region)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_temp_cat_int.orf)
+anova(LPO_lm_temp_cat_int.r, LPO_lm_temp_cat_int.orfr)
+
+```
+
+```{r}
+### Vs temp and orf
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_notemp)
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_mtORF)
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_Region)
+anova(LPO_lm_temp_cat_int.orf, LPO_lm_temp_cat_int.orfr)
+```
+
+```{r}
+###Vs temp reg * orf
+anova(LPO_lm_temp_cat_int.orfr, LPO_lm_notemp)
+anova(LPO_lm_temp_cat_int.orfr, LPO_lm_mtORF)
+anova(LPO_lm_temp_cat_int.orfr, LPO_lm_Region)
+```
+
+```{r}
+###Vs no temp 
+anova(LPO_lm_notemp, LPO_lm_Region)
+anova(LPO_lm_notemp, LPO_lm_mtORF)
+```
+
+```{r}
+## Vs mtORF or Region alone 
+anova(LPO_lm_mtORF, LPO_lm_Region)
+```
+
+```{r}
+summary(LPO_lm_Region)
+
+summary(LPO_lm_mtORF)
+```
+
+```{r}
+hist(residuals(LPO_lm_Region))
+
+hist(residuals(LPO_lm_mtORF))
+```
+```{r}
+###Let's color the residuals for mtORF only by region, and vice versa, to see if each encapsulates the other, given the study design 
+
+LPO$mtORF = as.factor(LPO$mtORF)
+
+LPO$Region = as.factor(LPO$Region)
+
+###model Region only color by mtORF
+
+plot(residuals(LPO_lm_Region), col = LPO$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$mtORF), fill = unique(LPO$mtORF))
+```
+
+```{r}
+###model mtORF only color by region
+
+plot(residuals(LPO_lm_mtORF), col = LPO$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(LPO$Region), fill = unique(LPO$Region))
+```
+```{r}
+LPO$Site = as.factor(LPO$Site)
+LPO$Temp = as.factor(LPO$Temp)
+
+LPO_temp_site <- LPO %>% ggplot(aes(x=Temp, y=logLPO)) + geom_boxplot(show.legend = T)+
+  geom_point(position=position_jitterdodge(jitter.width=0, dodge.width = 0.3, seed = 1234),
+             aes(color=Site), show.legend = T) +  stat_summary(
+    aes(label = round(stat(y), 1)),
+    geom = "text", 
+    fun.y = function(y) { o <- boxplot.stats(y)$out; if(length(o) == 0) NA else o },
+    hjust = -1
+  )
+
+LPO_temp_site
+```
+
+
+```{r}
+### NOW PICK BEST MODEL!!! 
+
+summary(LPO_lm_temp_cat_int.orf)
+
+summary(LPO_lm_temp_cat_int.r)
+```
+
+```{r}
+plot(LPO_lm_temp_cat_int.orf)
+```
+
+```{r}
+plot(LPO_lm_temp_cat_int.r)
+```
+
+```{r}
+###Okay does adding C/D add inference pwr? 
+
+algae_prop <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\algae_CBASS_prop_2023.csv")
+
+algae_prop
+```
+
+```{r}
+###Using Maxime's code, let's find a raw C vs D metrix
+
+#sum up rows of the same clade
+algae_prop_cladegroup <- algae_prop %>% group_by(col, temp, gulf, reef, mtorf, Clade) %>% summarize(Abundance = sum(Abundance))
+
+library(tidyverse)
+
+# split abundance column by Clade
+algae_prop_cladegroup2 <- pivot_wider(algae_prop_cladegroup, names_from = "Clade", values_from = "Abundance")
+
+###Vis check
+
+head(algae_prop_cladegroup2)
+
+###See that all "D" is NA bc zero
+
+algae_prop_cladegroup2$D[is.na(algae_prop_cladegroup2$D)] <- 0
+
+algae_prop_cladegroup2
+```
+
+```{r}
+algae_prop_cladegroup2$Relative_Proportion <- with(algae_prop_cladegroup2, ifelse(is.na(C) | C == 0, 0, C / (C + D)))
+
+##Check file
+algae_prop_cladegroup2
+
+###Wohooo!!!! 
+```
+
+```{r}
+
+###Rename columns prior to merge
+
+colnames(algae_prop_cladegroup2)[colnames(algae_prop_cladegroup2) == "col"] <- "Colony"
+colnames(algae_prop_cladegroup2)[colnames(algae_prop_cladegroup2) == "temp"] <- "Temp"
+
+###quick check!
+
+algae_prop_cladegroup2
+
+```
+
+```{r}
+##Check LPO to merge
+
+LPO
+```
+
+```{r}
+# Merge data frames by the "drops" column
+merged_df <- merge(LPO, algae_prop_cladegroup2, by = c("Colony", "Temp"), all = TRUE)
+
+# Print the merged data frame
+print(merged_df)
+```
+
+```{r}
+###Let's begin with the original poly2 with our C/D ration as an additional variable!!! 
+
+###Sanity check, rerun sqrtTAC alone and + Region and + mtORF with merged_df
+
+LPO_lm_temp_cat_int.r_2 = lm(logLPO ~ Temp + Region, data = merged_df, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.orf_2 = lm(logLPO ~ Temp + mtORF, data = merged_df, na.action = na.exclude)
+
+LPO_lm_temp_2 = lm(logLPO ~ Temp, data = merged_df, na.action = na.exclude)
+```
+
+```{r}
+##Compare output of both models -- should be ID
+
+summary(LPO_lm_temp_cat_int.r)
+
+summary(LPO_lm_temp_cat_int.r_2)
+
+```
+
+```{r}
+
+summary(LPO_lm_temp_cat_int.orf)
+
+summary(LPO_lm_temp_cat_int.orf_2)
+
+```
+
+```{r}
+
+summary(LPO_lm_temp)
+
+summary(LPO_lm_temp_2)
+
+```
+```{r}
+###Wohooo! Now let's add C/D
+
+merged_df
+
+###Okay two samples de mas in TAC are the two samples w/o algal reads, let's prune these
+
+df_subset <- merged_df[!is.na(merged_df$Relative_Proportion), , drop = FALSE]
+
+df_subset 
+
+df_subset2 <- df_subset[!is.na(df_subset$logLPO), , drop = FALSE]
+
+df_subset2
+```
+```{r}
+##Sanity check
+
+LPO
+merged_df
+df_subset
+df_subset2
+
+```
+
+```{r}
+
+###With relative prop
+
+LPO_lm_temp_cat_int.r_2_algae = lm(logLPO ~ Temp + Region + Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.orf_2_algae = lm(logLPO ~ Temp + mtORF + Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_temp_2_algae = lm(logLPO ~ Temp + Relative_Proportion, data = df_subset2, na.action = na.exclude)
+```
+
+```{r}
+
+##Let's look at the output
+
+summary(LPO_lm_temp_cat_int.r_2_algae)
+
+```
+
+```{r}
+
+summary(LPO_lm_temp_cat_int.orf_2_algae)
+```
+
+```{r}
+summary(LPO_lm_temp_2_algae)
+```
+```{r}
+##FULL ANOVA FOR SANITY CHECK
+###Reminder! Need re-run base models with same pruned dataset w/o NAs
+
+LPO_lm_temp_cat_int.r_2p = lm(logLPO ~ Temp + Region, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_temp_cat_int.orf_2p = lm(logLPO ~ Temp + mtORF, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_temp_2p = lm(logLPO ~ Temp, data = df_subset2, na.action = na.exclude)
+```
+
+```{r}
+
+anova(LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_cat_int.orf_2_algae)
+anova(LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_2_algae)
+anova(LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_cat_int.r_2p)
+anova(LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_cat_int.orf_2p)
+anova(LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_2p)
+```
+
+````{r}
+anova(LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_2_algae)
+anova(LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_cat_int.r_2p)
+anova(LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_cat_int.orf_2p)
+anova(LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_2p)
+```
+
+```{r}
+anova(LPO_lm_temp_2_algae, LPO_lm_temp_cat_int.r_2p)
+anova(LPO_lm_temp_2_algae, LPO_lm_temp_cat_int.orf_2p)
+anova(LPO_lm_temp_2_algae, LPO_lm_temp_2p)
+```
+
+```{r}
+anova(LPO_lm_temp_cat_int.r_2p, LPO_lm_temp_cat_int.orf_2p)
+anova(LPO_lm_temp_cat_int.r_2p, LPO_lm_temp_2p)
+```
+
+```{r}
+anova(LPO_lm_temp_cat_int.orf_2p, LPO_lm_temp_2p)
+
+```
+```{r}
+###For AIC comparison,let's run an intercept only model
+
+intercept_model_LPO <- lm(logLPO ~ 1, data = df_subset2, na.action = na.exclude)
+
+summary(intercept_model_LPO)
+```
+```{r}
+
+# Calculate AIC values
+
+AIC(intercept_model_LPO, LPO_lm_temp_cat_int.orf_2p, LPO_lm_temp_cat_int.r_2p, LPO_lm_temp_2p, LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_2_algae)
+
+
+###cat("AIC values:\n", paste(aic_values, collapse = "\n"))
+```
+```{r}
+###Okay so no orf or temp differences vs intercept model, but yes region
+
+### INTERESTING!!! see that support region + akgae ~ region alone, but other +algae no differences
+
+
+```
+
+```{r}
+###From last meeting with Sean = let's run models with a single variable each
+### LPO ~ temp / region / algae / orf
+### Also try temp * region / temp * algae 
+```
+
+```{r}
+LPO_lm_reg = lm(logLPO ~ Region, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_orf = lm(logLPO ~ mtORF, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_algae = lm(logLPO ~ Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_tempxalgae = lm(logLPO ~ Temp * Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_tempxregion = lm(logLPO ~ Temp * Region, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_tempxorf = lm(logLPO ~ Temp * mtORF, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_algaexorf = lm(logLPO ~ mtORF * Relative_Proportion, data = df_subset2, na.action = na.exclude)
+  
+LPO_lm_algaexregion = lm(logLPO ~ Region * Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+LPO_lm_algaexregionxorf = lm(logLPO ~ Region * mtORF * Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+```
+
+```{r}
+summary(LPO_lm_reg)
+```
+
+```{r}
+summary(LPO_lm_orf)
+```
+
+```{r}
+summary(LPO_lm_algae)
+```
+
+```{r}
+summary(LPO_lm_tempxalgae)
+```
+
+```{r}
+summary(LPO_lm_tempxregion)
+```
+
+```{r}
+summary(LPO_lm_tempxorf)
+```
+```{r}
+summary(LPO_lm_algaexorf)
+```
+
+```{r}
+summary(LPO_lm_algaexregion)
+```
+```{r}
+summary(LPO_lm_algaexregionxorf)
+```
+```{r}
+###Pairwise ANOVA for new models
+
+anova(LPO_lm_reg, LPO_lm_orf)
+
+anova(LPO_lm_reg, LPO_lm_algae)
+
+anova(LPO_lm_reg, LPO_lm_tempxalgae)
+
+anova(LPO_lm_reg, LPO_lm_tempxregion)
+
+anova(LPO_lm_reg, LPO_lm_tempxorf)
+
+anova(LPO_lm_reg, LPO_lm_algaexorf)
+
+anova(LPO_lm_reg, LPO_lm_algaexregion)
+```
+
+```{r}
+anova(LPO_lm_orf, LPO_lm_algae)
+
+anova(LPO_lm_orf, LPO_lm_tempxalgae)
+
+anova(LPO_lm_orf, LPO_lm_tempxregion)
+
+anova(LPO_lm_orf, LPO_lm_tempxorf)
+
+anova(LPO_lm_orf, LPO_lm_algaexorf)
+
+anova(LPO_lm_orf, LPO_lm_algaexregion)
+
+```
+
+```{r}
+anova(LPO_lm_algae, LPO_lm_tempxalgae)
+
+anova(LPO_lm_algae, LPO_lm_tempxregion)
+
+anova(LPO_lm_algae, LPO_lm_tempxorf)
+
+anova(LPO_lm_algae, LPO_lm_algaexorf)
+
+anova(LPO_lm_algae, LPO_lm_algaexregion)
+```
+
+```{r}
+anova(LPO_lm_tempxalgae, LPO_lm_tempxregion)
+
+anova(LPO_lm_tempxalgae, LPO_lm_tempxorf)
+
+anova(LPO_lm_tempxalgae, LPO_lm_algaexorf)
+
+anova(LPO_lm_tempxalgae, LPO_lm_algaexregion)
+```
+
+```{r}
+anova(LPO_lm_tempxregion, LPO_lm_tempxorf)
+
+anova(LPO_lm_tempxregion, LPO_lm_algaexorf)
+
+anova(LPO_lm_tempxregion, LPO_lm_algaexregion)
+```
+
+```{r}
+anova(LPO_lm_tempxorf, LPO_lm_algaexorf)
+
+anova(LPO_lm_tempxorf, LPO_lm_algaexregion)
+```
+```{r}
+anova(LPO_lm_algaexorf, LPO_lm_algaexregion)
+```
+
+
+```{r}
+
+###Okay full AIC comparison with single var and interaction LPO comp 
+
+AIC(intercept_model_LPO, LPO_lm_temp_cat_int.orf_2p, LPO_lm_temp_cat_int.r_2p, LPO_lm_temp_2p, LPO_lm_temp_cat_int.r_2_algae, LPO_lm_temp_cat_int.orf_2_algae, LPO_lm_temp_2_algae, LPO_lm_reg, LPO_lm_orf, LPO_lm_algae, LPO_lm_tempxalgae, LPO_lm_tempxregion, LPO_lm_tempxorf, LPO_lm_algaexorf, LPO_lm_algaexregion, LPO_lm_algaexregionxorf)
+
+```
+
+```{r}
+###Okay what does this mean?
+
+### 1. "model to beat" is intercept (AIC 84) = see temp x orf ; Temp + mtORF + Relative_Proportion ; temp + algae comparable AIC 
+### 2. temp alone worst predictive ability vs intercept, so clear that need to include other predictors
+### 3. For models +2 AIC from intercept we have : Temp + Region + Relative_Proportion & Temp + Region
+### 4. When considering single var models, these +AIC away from intercept, with region only greatest diff and AIC of algae only comparable to models which add have temp and temp + region 
+### 5. When considering interaction effects, see temp X region lower AIC vs temp x algae
+### 6. orf alone lower AIC vs orf X temp and orf X algae ; no added benefit to have other var
+### 7. algae x region ~ temp X region but lower than Temp + Region + Relative_Proportion ! 
+```
+
+```{r}
+### Let's do the formalized lmtest
+
+library(lmtest)
+
+###nested with temp
+
+lrtest(LPO_lm_temp_2p, LPO_lm_temp_cat_int.orf_2p)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_temp_cat_int.r_2p)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_temp_cat_int.r_2_algae)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_temp_cat_int.orf_2_algae)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_temp_2_algae)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_tempxalgae)
+
+lrtest(LPO_lm_temp_2p,LPO_lm_tempxregion)
+
+lrtest(LPO_lm_temp_2p, LPO_lm_tempxorf)
+
+```
+
+```{r}
+##Nested with region
+
+lrtest(LPO_lm_reg, LPO_lm_temp_cat_int.r_2p)
+
+lrtest(LPO_lm_reg, LPO_lm_temp_cat_int.r_2_algae)
+
+lrtest(LPO_lm_reg, LPO_lm_tempxregion)
+
+lrtest(LPO_lm_reg,LPO_lm_algaexregion)
+
+```
+
+```{r}
+##Nested with mtORF 
+
+lrtest(LPO_lm_orf, LPO_lm_temp_cat_int.orf_2p)
+
+lrtest(LPO_lm_orf, LPO_lm_temp_cat_int.orf_2_algae)
+
+lrtest(LPO_lm_orf, LPO_lm_tempxorf)
+
+lrtest(LPO_lm_orf, LPO_lm_algaexorf)
+```
+
+
+```{r}
+##Nested with algae
+
+lrtest(LPO_lm_algae, LPO_lm_temp_cat_int.r_2_algae)
+
+lrtest(LPO_lm_algae, LPO_lm_temp_cat_int.orf_2_algae)
+
+lrtest(LPO_lm_algae, LPO_lm_temp_2_algae)
+
+lrtest(LPO_lm_algae, LPO_lm_algaexregion)
+
+lrtest(LPO_lm_algae, LPO_lm_algaexorf)
+
+lrtest(LPO_lm_algae, LPO_lm_tempxalgae)
+```
+
+
+```{r}
+summary(LPO_lm_tempxregion)
+```
+```{r}
+###Okay from talking to Sean (1/18) - done and dusted!
+#### Winning model is LPO_lm_tempxregion! 
+#### From single model comparisons, region alone >>> vs temp, algae, and mtorf alone
+
+#### To do:
+###### 1. posthoc temp and regions
+###### 2. loglik for top models 
+###### 3. predict.lm() and plot estimates w confidence intervals
+```
+
+```{r}
+
+##posthoc for winning temp x region LPO model
+
+library(emmeans)
+
+##first for sanity check, let's do region comparison (recall - only two levels here)
+
+emmeans(LPO_lm_tempxregion, pairwise ~ Region)
+```
+
+```{r}
+### temp comparison
+
+emmeans(LPO_lm_tempxregion, pairwise ~ Temp)
+
+```
+```{r}
+##Yet we have interactions, so let's visualize these
+
+w <- emmip(LPO_lm_tempxregion, ~ Temp | Region, CIs = TRUE) 
+
+w + theme_bw()
+```
+```{r}
+###Important, above see each gulf different behavior with each temp so need to more delicately do postdoc with 'emmeans' using fxn constrast
+
+LPO.emm <- emmeans(LPO_lm_tempxregion, ~ Temp * Region)
+
+contrast(LPO.emm, "consec", simple = "each", combine = TRUE, adjust = "bonferroni")
+
+joint_tests(LPO_lm_tempxregion)
+```
+```{r}
+contrast(LPO.emm, "pairwise", by = "Region", adjust = "bonferroni")          
+
+contrast(LPO.emm, "pairwise", by = "Temp", adjust = "bonferroni") 
+
+summary(LPO_lm_tempxregion)
+```
+```{r}
+###loglik of top three models
+
+logLik(LPO_lm_tempxregion) ###lowest value, at -30
+logLik(LPO_lm_reg) ### -35
+logLik(LPO_lm_algaexregion) ### -32
+logLik(LPO_lm_temp_cat_int.r_2p) ### for temp + region, still greater vs interaction temp * region
+```
+
+```{r}
+###Let's plot the estimates! 
+
+###First, matrix with only LPO temp and region
+
+df_subset2
+```
+
+```{r}
+df.pivot.LPO <- df_subset2[c("Region", "Temp")]
+
+df.pivot.LPO
+```
+
+```{r}
+###Wohoo we are in great shape!!
+
+predict.LPO.lm <- predict.lm(LPO_lm_tempxregion, df.pivot.LPO, se.fit = FALSE,
+        interval = "confidence",
+        level = 0.95, type = "response", na.action = na.omit)
+
+predict.LPO.lm
+```
+```{r}
+###Let's plot these predictions
+
+LPO.predict.plot <- cbind(df_subset2,predict.LPO.lm)
+
+LPO.predict.plot
+```
+```{r}
+p <- ggplot(LPO.predict.plot, aes(Temp, logLPO)) +
+  geom_point() +
+  stat_smooth(method = lm)  +
+  geom_errorbar(aes(min = lwr, max = upr), size = 0.5, 
+                width = 0.25, position = position_dodge())
+p
+
+```
+```{r}
+
+###add upper and lower bounds
+p2 <- p + facet_wrap(~Region) + theme_bw()
+
+p2
+```
+
+
+```{r}
+###for sake of completeness, let's see temp x mtORF
+
+df.pivot.LPO.orf <- df_subset2[c("mtORF", "Temp")]
+
+df.pivot.LPO.orf
+
+```
+
+```{r}
+
+predict.LPO.lm.orf <- predict.lm(LPO_lm_tempxorf, df.pivot.LPO.orf, se.fit = FALSE,
+        interval = "confidence",
+        level = 0.95, type = "response", na.action = na.omit)
+
+predict.LPO.lm.orf
+```
+```{r}
+###Let's plot these predictions
+
+LPO.predict.plot.orf <- cbind(df_subset2,predict.LPO.lm.orf)
+
+LPO.predict.plot.orf
+```
+```{r}
+p.orf <- ggplot(LPO.predict.plot.orf, aes(Temp, logLPO)) +
+  geom_point() +
+  stat_smooth(method = lm)  +
+  geom_errorbar(aes(min = lwr, max = upr), size = 0.5, 
+                width = 0.25, position = position_dodge())
+p.orf
+
+```
+
+```{r}
+###add upper and lower bounds
+p2.orf <- p.orf + facet_wrap(~mtORF) + theme_bw()
+
+p2.orf
+```
+
+```{r}
+p3.orf <- p.orf + facet_wrap(~mtORF + Region) + theme_bw()
+
+p3.orf
+```
+```{r}
+
+```
+

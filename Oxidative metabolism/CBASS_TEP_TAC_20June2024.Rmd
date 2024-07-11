@@ -1,0 +1,1461 @@
+
+```{r}
+###read in TAC data from CBASS
+
+TAC <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\TAC_fulldata_CBASS_2023_FINAL_v3.csv")
+
+## removed 3281, 3283, 33 and 36 respectively from Mogo Mogo as no colony/cowtag info
+
+### code 1111 for W00939, Uvas 36 as lack sample ID
+
+TAC
+
+###Redefine column classes
+
+TAC$mtORF <- as.factor(TAC$mtORF)
+
+TAC$Colony <- as.factor(TAC$Colony)
+
+TAC$MLG <- as.factor(TAC$MLG)
+
+TAC$Sample_ID <- as.factor(TAC$Sample_ID)
+
+TAC$Site <- as.factor(TAC$Site)
+
+TAC
+
+###set.seed
+
+set.seed(135346)
+
+```
+
+```{r}
+###Let's first visualize trends per site across temps
+
+library("ggplot2")
+library("dplyr")
+
+## Simple scatterplot, where site is ~facet_wrap()
+
+ggplot(TAC, aes(x = Temp, y = TAC)) + 
+  geom_point() +
+  facet_wrap(~Site) + ylab("TAC (�M CRE/mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+```
+```{r}
+##Let's filter the data based on Region and mtORF
+TAC_C <- TAC %>%
+  filter(Region == "Chiriqui")
+TAC_C
+
+TAC_P <- TAC %>%
+  filter(Region == "Panama")
+TAC_P
+```
+
+```{r}
+##For Panama
+
+ggplot(TAC_P, aes(x = Temp, y = TAC)) + 
+  geom_point() +
+  facet_wrap(~Site + mtORF) + ylab("TAC (µM CRE/mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+
+##For Chiriqui
+
+ggplot(TAC_C, aes(x = Temp, y = TAC)) + 
+  geom_point() +
+  facet_wrap(~Site + mtORF) + ylab("TAC (µM CRE/mg protein)") + xlab ("Temperature, Celsius") + 
+  theme(legend.position = "bottom") + theme_bw()
+
+```
+```{r}
+
+###Let's draw histograms for the data on TAC distribution
+
+hist(TAC$TAC)
+```
+```{r}
+#Seems slightly right skewed -- let's log +1 transform 
+
+TAC$logfudge_TAC=log(TAC$TAC + 1)
+
+head(TAC)
+
+hist(TAC$logfudge_TAC)
+```
+```{r}
+###Let's try square root
+TAC$sqrtTAC=sqrt(TAC$TAC)
+
+head(TAC)
+
+hist(TAC$sqrtTAC)
+
+#### sqrt better job vs log + 1 !
+```
+
+```{r}
+##Let's do some simple linear modelling to see what is putative driving TAC trends
+
+library(lme4)
+
+TAC_lm_full = lm(sqrtTAC ~ Temp * Region * mtORF, data = TAC, na.action = na.exclude)
+
+TAC_lm_tr = lm(sqrtTAC ~ Temp * Region , data = TAC, na.action = na.exclude)
+
+TAC_lm_tm = lm(sqrtTAC ~ Temp * mtORF, data = TAC, na.action = na.exclude)
+
+TAC_lm_rm = lm(sqrtTAC ~ Region * mtORF, data = TAC, na.action = na.exclude)
+
+TAC_lm_t = lm(sqrtTAC ~ Temp, data = TAC, na.action = na.exclude)
+
+TAC_lm_r = lm(sqrtTAC ~ Region, data = TAC, na.action = na.exclude)
+
+TAC_lm_m = lm(sqrtTAC ~ mtORF, data = TAC, na.action = na.exclude)
+
+```
+
+```{r}
+###Let's compare the fits from above
+anova(TAC_lm_full, TAC_lm_tr, TAC_lm_tm, TAC_lm_rm, TAC_lm_t, TAC_lm_r, TAC_lm_m) 
+
+### By default, the anova() method in R tests model terms sequentially ("type I sum of squares"). Other statistical packages such as SAS and JMP use marginal testing of terms in ANOVA tables ("type III sum of squares") instead. A bit of explanation about how they differ is found here).
+
+## Under sequential fitting, the sum of squares for each term or factor in the ANOVA table is the improvement in the error sum of squares when that term is added to the linear model, compared with a model including only the terms listed above it (but not those listed below it) in the table. This means that the order in which you list the variables in the lm formula affects the ANOVA table of results, including the P-values. The formula y~A+B+A:B will lead to different sums of squares than the formula y~B+A+A:B when the design is unbalanced. Note that anova() also respects hierarchy: the intercept is fitted first, before any other terms, main effects are fitted next, and interactions are fitted last. An interaction is never tested without its corresponding main effects included in the model.
+
+##Under marginal testing of terms ("type III sum of squares"), order of appearance of terms in the formula doesn't matter, and neither does hierarchy. The contribution of each model term is measured by the improvement in the error sum of squares when that term is entered last into the model. Main effects are tested with their interactions already in the model. The Anova() function in the car package, combined with a change in the contrasts used to calculate sums of squares, can be used to fit models using type III sum of squares (and also Type II, an in-between solution). Instructions are given below.
+```
+
+```{r}
+#anova with marginal means, type III 
+
+library(car)
+
+Anova(TAC_lm_full, type = 3) 
+
+Anova(TAC_lm_tr, type = 3) 
+```
+```{r}
+##Let's gain some insights from the summary output
+
+summary(TAC_lm_full) 
+
+summary(TAC_lm_tr)
+
+summary(TAC_lm_tm)
+
+summary(TAC_lm_rm)
+
+summary(TAC_lm_t)
+
+summary(TAC_lm_m)
+
+summary(TAC_lm_r)
+
+```
+```{r}
+
+ggplot(TAC, aes(y = sqrtTAC, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm", se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()
+
+ggplot(TAC, aes(y = sqrtTAC, x = mtORF)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm", se = FALSE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()
+
+ggplot(TAC, aes(y = sqrtTAC, x = Region)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm", se = FALSE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()
+```
+```{r}
+###Let's examine model residuals 
+
+hist(resid(TAC_lm_full))
+
+hist(resid(TAC_lm_tr))
+
+hist(resid(TAC_lm_tm))
+
+hist(resid(TAC_lm_rm))
+
+hist(resid(TAC_lm_t))
+
+hist(resid(TAC_lm_m))
+
+hist(resid(TAC_lm_r))
+
+### Residuals are estimates of experimental error obtained by subtracting the observed responses from the predicted responses. The predicted response is calculated from the chosen model, after all the unknown model parameters have been estimated from the experimental data.
+
+## Examining residuals is a key part of all statistical modeling, including DOE's. Carefully looking at residuals can tell us whether our assumptions are reasonable and our choice of model is appropriate.
+
+### From this, all models have a slight right tail, with the models without temp, e.g. mtorf * region, or these alone, have a clear peak at 0 
+
+#### This to me suggests that without temp, not doing a good job of explaining var in model but interactive effect may not be the way to go for all three ...yet from summary and anovas, clear interactive effect mtORF and region
+```
+```{r}
+
+### With the insights above, let's create a new set of models
+
+TAC_lm_temp_int.orfr = lm(sqrtTAC ~ Temp + Region * mtORF, data = TAC, na.action = na.exclude)
+
+TAC_lm_temp_int.orf = lm(sqrtTAC ~ Temp + mtORF, data = TAC, na.action = na.exclude)
+
+TAC_lm_temp_int.r = lm(sqrtTAC ~ Temp + Region, data = TAC, na.action = na.exclude)
+
+###Now compare model fits, plus model just temp for point of comparison
+
+anova(TAC_lm_temp_int.orfr, TAC_lm_temp_int.orf, TAC_lm_temp_int.r, TAC_lm_t)
+
+```
+```{r}
+##Let's do pairwise comparisons in ANOVA
+
+anova(TAC_lm_temp_int.orfr, TAC_lm_temp_int.orf)
+
+anova(TAC_lm_temp_int.orfr, TAC_lm_temp_int.r)
+
+anova(TAC_lm_temp_int.orfr, TAC_lm_t)
+
+anova(TAC_lm_temp_int.orf, TAC_lm_temp_int.r)
+
+anova(TAC_lm_temp_int.orf, TAC_lm_t)
+
+anova(TAC_lm_temp_int.r, TAC_lm_t)
+```
+
+
+```{r}
+###Now the summary outputs
+
+summary(TAC_lm_temp_int.orfr)
+
+summary(TAC_lm_temp_int.orf)
+
+summary(TAC_lm_temp_int.r)
+
+summary(TAC_lm_t)
+```
+
+```{r}
+###Histogram of model residuals for further diagnostics
+hist(resid(TAC_lm_temp_int.orfr))
+
+hist(resid(TAC_lm_temp_int.orf))
+
+hist(resid(TAC_lm_temp_int.r))
+
+hist(resid(TAC_lm_t))
+
+```
+
+```{r}
+
+plot(residuals(TAC_lm_temp_int.orfr))
+
+plot(residuals(TAC_lm_temp_int.orf))
+
+plot(residuals(TAC_lm_temp_int.r))
+
+plot(residuals(TAC_lm_t))
+
+```
+
+```{r}
+library(dichromat)
+
+color_pallete_function <- colorRampPalette(
+  colors = c("red", "orange", "blue", "green")
+  )
+
+num_colors <- nlevels(TAC$Site)
+
+diamond_color_colors <- color_pallete_function(num_colors)
+```
+
+```{r}
+TAC$Site = as.factor(TAC$Site)
+
+plot(residuals(TAC_lm_temp_int.orfr), col = TAC$Site)
+```
+
+```{r}
+qqnorm(TAC$sqrtTAC, pch = 1, frame = FALSE)
+qqline(TAC$sqrtTAC, col = "steelblue", lwd = 2)
+
+### 
+TAC$sqrt2TAC<- log(TAC$TAC + 0.1)
+
+TAC$logTAC2 <- sqrt(TAC$TAC + 0.1)
+
+qqnorm(TAC$sqrt2TAC, pch = 1, frame = FALSE)
+qqline(TAC$sqrt2TAC, col = "steelblue", lwd = 2)
+
+qqnorm(TAC$logTAC2, pch = 1, frame = FALSE)
+qqline(TAC$logTAC2, col = "steelblue", lwd = 2)
+
+```
+
+```{r}
+# Boxplot per site
+
+TAC$Site = as.factor(TAC$Site)
+TAC$Temp = as.factor(TAC$Temp)
+
+TAC_temp_site <- TAC %>% ggplot(aes(x=Temp, y=sqrtTAC)) + geom_boxplot(show.legend = T)+
+  geom_point(position=position_jitterdodge(jitter.width=0, dodge.width = 0.3, seed = 1234),
+             aes(color=Site), show.legend = T) +  stat_summary(
+    aes(label = round(stat(y), 1)),
+    geom = "text", 
+    fun.y = function(y) { o <- boxplot.stats(y)$out; if(length(o) == 0) NA else o },
+    hjust = -1
+  )
+
+TAC_temp_site
+```
+
+```{r}
+###Okay from talking to Sean, 1 Nov 2023:
+#####(1) try box-cox transformation
+#####(2) check leverage of points, plot() fx; influence.measures
+#####(3) Models temp only, do 2nd order function as relationship seems non0linear; parabolic. If fails, try gnls
+
+######OJO keep temp as factor, not categorical 
+```
+
+```{r}
+###Model just temp
+
+summary(TAC_lm_t)
+
+plot(TAC_lm_t)
+```
+
+```{r}
+
+##Let's try boxcox so need to re-run model without TAC sqrt transformed
+
+TAC <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\TAC_fulldata_CBASS_2023_FINAL_v3.csv")
+
+TAC
+
+###As too many zeros this will cause these to have same lambda value with a boxcox transformation, so let's add an incredibly small value to these zeros
+
+TAC$lbc.fudge_TAC= TAC$TAC + 0.001
+
+TAC
+
+```
+
+```{r}
+
+lm_temp_notransf <- lm(formula = lbc.fudge_TAC ~ Temp, data = TAC, na.action = na.exclude)
+
+summary(lm_temp_notransf)
+
+```
+
+```{r}
+library(MASS)
+
+bc <- boxcox(lm_temp_notransf)
+```
+
+```{r}
+str(bc) # numbers that make up the graph
+
+(bc.power <- bc$x[which.max(bc$y)])
+```
+
+```{r}
+BCTransform <- function(y, lambda=0) {
+    if (lambda == 0L) { log(y) }
+    else { (y^lambda - 1) / lambda }
+}
+
+BCTransformInverse <- function(yt, lambda=0) {
+    if (lambda == 0L) { exp(yt) }
+    else { exp(log(1 + lambda * yt)/lambda) }
+}
+
+# testing
+yt <- BCTransform(TAC$lbc.fudge_TAC, 0)
+yo <- BCTransformInverse(yt, 0)
+unique(round(yo-TAC$lbc.fudge_TAC),8)
+
+yt <- BCTransform(TAC$lbc.fudge_TAC, .5)
+yo <- BCTransformInverse(yt, .5)
+unique(round(yo-TAC$lbc.fudge_TAC),8)
+
+### worked!!1
+```
+
+```{r}
+
+###original, no transf histogram
+
+hist(TAC$lbc.fudge_TAC); rug(TAC$lbc.fudge_TAC)
+
+```
+
+
+```{r}
+##BC transformation
+
+TAC$lbc.fudge_TAC.bc <- BCTransform(TAC$lbc.fudge_TAC, bc.power)
+
+hist(TAC$lbc.fudge_TAC.bc); rug(TAC$lbc.fudge_TAC.bc)
+
+##VS log
+
+hist(log(TAC$lbc.fudge_TAC)); rug(log(TAC$lbc.fudge_TAC))
+```
+
+```{r}
+
+###Let's re-run model with lbc.fudge_TAC.bc
+
+lm_temp_bc <- lm(formula = lbc.fudge_TAC.bc ~ Temp, data = TAC, na.action = na.exclude)
+summary(lm_temp_bc)
+```
+
+```{r}
+###Let's see diagnostic plots
+plot(lm_temp_bc)
+```
+
+```{r}
+###compare to non bc
+
+plot(TAC_lm_t)
+
+###seems smaller residuals in bc model ... let's take this one!
+
+summary(TAC_lm_t)
+```
+
+```{r}
+
+# Fitting a quadratic model
+
+TAC_lm_t_quad <- lm(lbc.fudge_TAC.bc ~ poly(Temp, 2), data = TAC, na.action = na.exclude)
+
+# Summary of the quadratic model
+
+summary(TAC_lm_t_quad)
+
+###Let me also fit a quadratic without the bc transformation, just sqrtTAC as before!
+
+TAC$sqrtTAC=sqrt(TAC$TAC)
+
+sqrtTAC_lm_t_quad <- lm(sqrtTAC ~ poly(Temp, 2), data = TAC, na.action = na.exclude)
+
+# Summary of the quadratic model with original sqrtTAC
+
+summary(sqrtTAC_lm_t_quad)
+```
+
+```{r}
+plot(TAC_lm_t_quad)
+```
+
+```{r}
+plot(sqrtTAC_lm_t_quad)
+```
+
+```{r}
+###2nd order model, with bc transformation
+hist(resid(TAC_lm_t_quad))
+
+###2nd order, just sqrtTAC
+
+hist(resid(sqrtTAC_lm_t_quad))
+
+###Original with sqrtTAC
+
+hist(resid(TAC_lm_t))
+
+##Frim this, it seems like TAC BC with qud is the best fit, vs sqrtTAC quad 
+```
+
+```{r}
+# Boxplot per site
+
+TAC$Site = as.factor(TAC$Site)
+TAC$Temp.fctr = as.factor(TAC$Temp)
+
+TAC
+
+```
+
+```{r}
+
+TAC_sqrttemp_site <- TAC %>% ggplot(aes(x=Temp.fctr, y=sqrtTAC)) + geom_boxplot(show.legend = T)+
+  geom_point(position=position_jitterdodge(jitter.width=0, dodge.width = 0.3, seed = 1234),
+             aes(color=Site), show.legend = T) +  stat_summary(
+    aes(label = round(stat(y), 1)),
+    geom = "text", 
+    fun.y = function(y) { o <- boxplot.stats(y)$out; if(length(o) == 0) NA else o },
+    hjust = -1
+  )
+
+TAC_sqrttemp_site
+
+
+TAC_bctemp_site <- TAC %>% ggplot(aes(x=Temp.fctr, y=lbc.fudge_TAC.bc)) + geom_boxplot(show.legend = T)+
+  geom_point(position=position_jitterdodge(jitter.width=0, dodge.width = 0.3, seed = 1234),
+             aes(color=Site), show.legend = T) +  stat_summary(
+    aes(label = round(stat(y), 1)),
+    geom = "text", 
+    fun.y = function(y) { o <- boxplot.stats(y)$out; if(length(o) == 0) NA else o },
+    hjust = -1
+  )
+
+TAC_bctemp_site
+```
+```{r}
+ggplot(TAC, aes(y = sqrtTAC, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()
+
+
+ggplot(TAC, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()
+```
+
+```{r}
+###okay residuals still do not look great but better than prior without poly 2 fxn i.e. fitting a 2nd order fxn ; also boxcox vs no boxcox for sqrt fx, boxcox more normal
+
+###Let's try two things now:
+
+#### (1) gnls
+
+#### (2) temp as categorical 
+
+#### As there is a clear parabolic response, let's try (1) first as we do not wish to remove information 
+
+```
+
+```{r}
+fit_nls <- nls(lbc.fudge_TAC.bc ~ a * Temp^2 + b * Temp + c, data = TAC, start = list(a = -0.2, b = 1, c = 1))
+
+# Print the summary of the fitted model
+summary(fit_nls)
+
+##Some diagnostic plots
+plot(fit_nls)
+```
+```{r}
+# Create a ggplot object with my actual data
+p <- ggplot(TAC, aes(y = lbc.fudge_TAC.bc, x = Temp)) + geom_point()
+ 
+```
+
+```{r}
+
+# Add the fitted quadratic curve to the plot
+p + stat_function(
+  fun = function(x) coef(fit_nls)[1] * x^2 + coef(fit_nls)[2] * x + coef(fit_nls)[3],
+  color = "red",  # Color of the fitted curve
+  size = 1.2      # Size of the line
+) +
+labs(title = "Quadratic Model Fit",
+     x = "Temperature",
+     y = "TAC boxcox transformed")
+
+### okay but fit is not improved to simpler poly ... 
+```
+
+```{r}
+# Extract coefficients from the fitted model
+coefficients <- coef(fit_nls)
+a <- coefficients[1]
+b <- coefficients[2]
+
+# Calculate the x-coordinate of the vertex
+vertex_x <- -b / (2 * a)
+
+vertex_x
+```
+```{r}
+###Now what is we re-run this splitting by gulf and mtORF ? 
+
+##Let's filter the data based on Region
+TAC_C <- TAC %>%
+  filter(Region == "Chiriqui")
+TAC_C
+
+TAC_P <- TAC %>%
+  filter(Region == "Panama")
+TAC_P
+
+##Let's filter the data based on mtORF
+TAC_3 <- TAC %>%
+  filter(mtORF == "3")
+TAC_3
+
+TAC_1 <- TAC %>%
+  filter(mtORF == "1")
+TAC_1
+```
+```{r}
+###For Chiriqui
+ggplot(TAC_C, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic() +
+labs(title = "Quadratic model fit, TAC across temperature, Gulf of Chiriqui",
+     x = "Temperature",
+     y = "TAC boxcox transformed")
+
+###For Panama
+ggplot(TAC_P, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic() +
+labs(title = "Quadratic model fit, TAC across temperature, Gulf of Panama",
+     x = "Temperature",
+     y = "TAC boxcox transformed")
+
+###For mtORF1 
+ggplot(TAC_1, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic()  +
+labs(title = "Quadratic model fit, TAC across temperature, mtORF 1",
+     x = "Temperature",
+     y = "TAC boxcox transformed")
+
+###For mtORF3
+ggplot(TAC_3, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic() +
+labs(title = "Quadratic model fit, TAC across temperature, mtORF3",
+     x = "Temperature",
+     y = "TAC boxcox transformed")
+```
+
+```{r}
+###For Chiriqui, both ORFs
+ggplot(TAC_C, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic() +
+labs(title = "Quadratic model fit, TAC across temperature, Gulf of Chiriqui",
+     x = "Temperature",
+     y = "TAC boxcox transformed") + facet_wrap(~mtORF)
+
+###For Panama, both ORFs
+ggplot(TAC_P, aes(y = lbc.fudge_TAC.bc, x = Temp)) +
+    geom_point(size = 2, col = "red") +
+    geom_smooth(method = "lm",  formula = y ~ x + I(x^2), se = TRUE) +
+    theme(aspect.ratio = 0.80) +
+    theme_classic() +
+labs(title = "Quadratic model fit, TAC across temperature, Gulf of Panama",
+     x = "Temperature",
+     y = "TAC boxcox transformed") + facet_wrap(~mtORF)
+```
+
+```{r}
+###Based on our conversation with Sean let's now
+####(1) run influence.measures on our quadratic fit
+####(2) plot mtORF and Region as diff colors on residuals of new quad model
+```
+
+```{r}
+plot(TAC_lm_t_quad)
+
+influence.measures(TAC_lm_t_quad)
+```
+
+```{r}
+
+###Color code residuals
+
+TAC$mtORF = as.factor(TAC$mtORF)
+
+TAC$Region = as.factor(TAC$Region)
+
+###Color by mtORF
+
+plot(residuals(TAC_lm_t_quad), col = TAC$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$mtORF), fill = unique(TAC$mtORF))
+
+###Color region
+
+plot(residuals(TAC_lm_t_quad), col = TAC$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$Region), fill = unique(TAC$Region))
+```
+
+```{r}
+###Okay from talking to Sean round 2:
+#### (1) Run model ~ Region and ~ mtORF and compare to other models
+#### (2) Color residuals of ~ region and ~mtORF only by other variable 
+#### (2)Remove 36 degrees and re-run as temp ~ categ
+```
+
+```{r}
+## Change temp to categ
+
+TAC$temp_c = as.factor(TAC$Temp)
+
+###check
+
+TAC
+```
+
+```{r}
+###Let's re-run with temp as category
+
+TAC_lm_temp_c_bc <- lm(lbc.fudge_TAC.bc ~ temp_c, data = TAC, na.action = na.exclude)
+
+TAC_lm_reg_bc <- lm(lbc.fudge_TAC.bc ~ Region, data = TAC, na.action = na.exclude)
+
+TAC_lm_orf_bc  <- lm(lbc.fudge_TAC.bc ~ mtORF, data = TAC, na.action = na.exclude)
+```
+
+```{r}
+summary(TAC_lm_temp_c_bc)
+
+summary(TAC_lm_reg_bc)
+
+summary(TAC_lm_orf_bc)
+```
+
+```{r}
+###Okay what if we re-run removing highest temp, to mirror LPO? 
+
+TAC_33 <- subset(TAC, Temp != '36')
+
+TAC_33
+
+###worked! now re-run models from above
+```
+```{r}
+###Let's re-run with temp as category and no 36!
+
+TAC_lm_temp_c_33_bc <- lm(lbc.fudge_TAC.bc ~ temp_c, data = TAC_33, na.action = na.exclude)
+
+TAC_lm_reg_33_bc <- lm(lbc.fudge_TAC.bc ~ Region, data = TAC_33, na.action = na.exclude)
+
+TAC_lm_orf_33_bc <- lm(lbc.fudge_TAC.bc ~ mtORF, data = TAC_33, na.action = na.exclude)
+```
+
+```{r}
+summary(TAC_lm_temp_c_33_bc)
+
+summary(TAC_lm_reg_33_bc)
+
+summary(TAC_lm_orf_33_bc)
+```
+
+```{r}
+### interesting, so 36 driving entire pattern! 
+
+#### So let's now residual plot and color code by other
+```
+
+```{r}
+###model mtORF only color by region; for both w and w/o 36
+
+##highest temp 33
+plot(residuals(TAC_lm_orf_33_bc), col = TAC_33$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC_33$Region), fill = unique(TAC_33$Region))
+
+###highest temp 36
+plot(residuals(TAC_lm_orf_bc), col = TAC$Region)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$Region), fill = unique(TAC$Region))
+
+```
+
+```{r}
+
+###Very low dots for full dataset incl 36; who are they? 
+
+plot(residuals(TAC_lm_orf_bc), col = TAC$temp_c)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$temp_c), fill = unique(TAC$temp_c))
+
+### BINGOOO it is 36C 
+```
+```{r}
+###Let's now do region model colored by mtORF
+
+##highest temp 33
+plot(residuals(TAC_lm_reg_33_bc), col = TAC_33$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC_33$mtORF), fill = unique(TAC_33$mtORF))
+
+###highest temp 36
+plot(residuals(TAC_lm_reg_bc), col = TAC$mtORF)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$mtORF), fill = unique(TAC$mtORF))
+
+```
+
+```{r}
+
+###Very low dots for full dataset incl 36; who are they? 
+
+plot(residuals(TAC_lm_reg_bc), col = TAC$temp_c)
+
+# Add a horizontal line at y = 0
+abline(h = 0, lty = 2, col = "black")
+
+# Add legend
+legend("topright", legend = levels(TAC$temp_c), fill = unique(TAC$temp_c))
+
+### BINGOOO it is 36C 
+```
+```{r}
+###Anova between three models, w and w/o 36
+
+### all temp incl 36
+anova(TAC_lm_temp_c_bc, TAC_lm_reg_bc)
+anova(TAC_lm_temp_c_bc, TAC_lm_orf_bc)
+anova(TAC_lm_reg_bc, TAC_lm_orf_bc)
+```
+
+````{r}
+### only up to 33
+
+anova(TAC_lm_temp_c_33_bc, TAC_lm_reg_33_bc)
+anova(TAC_lm_temp_c_33_bc, TAC_lm_orf_33_bc)
+anova(TAC_lm_reg_33_bc, TAC_lm_orf_33_bc)
+
+```
+
+
+```{r}
+### So how pick here ... I would presume we still go with just TAC ~ temp, but I think perhaps keep 36C as I think here the limit has been reached, contrasting for LPO where lack thereof of temp trend may be because highest temp missing ?
+```
+
+```{r}
+##From talking to Sean 
+#### (1)+ region and +mtORF on 2nd order temp eq
+#### (2) Add c/d dominance to final model, at baseline and 33C
+#### (3) AIC likelihood for intercept model vs temp, region and mtORF
+```
+
+```{r}
+
+###Winning model with temp 2nd order, adding a linear term w region or mtORF
+
+sqrtTAC_lm_t_quad <- lm(sqrtTAC ~ poly(Temp, 2), data = TAC, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_reg <- lm(sqrtTAC ~ poly(Temp, 2) + Region, data = TAC, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_mtORF <- lm(sqrtTAC ~ poly(Temp, 2) + mtORF, data = TAC, na.action = na.exclude)
+```
+
+```{r}
+summary(sqrtTAC_lm_t_quad)
+
+summary(sqrtTAC_lm_t_quad_reg)
+
+summary(sqrtTAC_lm_t_quad_mtORF)
+```
+```{r}
+##ANOVAs to compare 
+
+anova(sqrtTAC_lm_t_quad, sqrtTAC_lm_t_quad_reg)
+
+anova(sqrtTAC_lm_t_quad, sqrtTAC_lm_t_quad_mtORF)
+
+anova(sqrtTAC_lm_t_quad_reg, sqrtTAC_lm_t_quad_mtORF)
+
+###No clear added stat inference with mtORF or Region -- temp alone still wins!
+```
+```{r}
+###Okay does adding C/D add inference pwr? 
+
+algae_prop <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\algae_CBASS_prop_2023.csv")
+
+algae_prop
+```
+```{r}
+
+###Using Maxime's code, let's find a raw C vs D metrix
+
+library(tidyr)
+
+#sum up rows of the same clade
+algae_prop_cladegroup <- algae_prop %>% group_by(col, temp, gulf, reef, mtorf, Clade) %>% summarize(Abundance = sum(Abundance))
+
+# split abundance column by Clade
+algae_prop_cladegroup2 <- pivot_wider(algae_prop_cladegroup, names_from = "Clade", values_from = "Abundance")
+
+###Vis check
+
+head(algae_prop_cladegroup2)
+
+###See that all "D" is NA bc zero
+
+algae_prop_cladegroup2$D[is.na(algae_prop_cladegroup2$D)] <- 0
+
+algae_prop_cladegroup2
+
+```
+
+```{r}
+algae_prop_cladegroup2$Relative_Proportion <- with(algae_prop_cladegroup2, ifelse(is.na(C) | C == 0, 0, C / (C + D)))
+
+##Check file
+algae_prop_cladegroup2
+
+###Wohooo!!!! 
+```
+
+```{r}
+
+###Rename columns prior to merge
+
+colnames(algae_prop_cladegroup2)[colnames(algae_prop_cladegroup2) == "col"] <- "Colony"
+colnames(algae_prop_cladegroup2)[colnames(algae_prop_cladegroup2) == "temp"] <- "Temp"
+
+###quick check!
+
+algae_prop_cladegroup2
+
+```
+
+```{r}
+###Check TAC prior to merge
+TAC
+```
+
+```{r}
+# Merge data frames by the "drops" column
+merged_df <- merge(TAC, algae_prop_cladegroup2, by = c("Colony", "Temp"), all = TRUE)
+
+# Print the merged data frame
+print(merged_df)
+```
+```{r}
+##Let's make separate df for baseline and 33C
+
+Baseline<- filter(merged_df, Temp == 28.5, preserve = TRUE)
+
+Baseline
+
+temp_33 <- filter(merged_df, Temp == 33.0, preserve = TRUE)
+
+temp_33
+
+```
+```{r}
+# Stacked bar chart
+
+###First let's use original algae file 
+
+algae_prop
+```
+
+```{r}
+
+Baseline_algae<- filter(algae_prop, temp == 28.5, preserve = TRUE)
+
+Baseline_algae
+
+Baseline_algae$col <- as.factor(Baseline_algae$col) 
+
+Baseline_algae
+```
+
+```{r}
+
+temp_33_algae <- filter(algae_prop, temp == 33.0, preserve = TRUE)
+
+temp_33_algae
+
+temp_33_algae$col <- as.factor(temp_33_algae$col) 
+
+temp_33_algae
+
+```
+
+```{r}
+Baseline_algae_prop <- ggplot(Baseline_algae, aes(x = col, y = Abundance, fill = Clade)) +
+  geom_col(position = "fill") +
+  labs(title = "Baseline relative abundance of algal clades at 28.5-degrees",
+       x = "Colony",
+       y = "Relative Proportion") +
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  theme_minimal()
+
+Baseline_algae_prop
+
+Baseline_algae_prop + facet_wrap(~gulf)
+```
+
+```{r}
+# single var for facet_wrap to only show colonies in each gulf
+Baseline_algae$facet_var <- paste(Baseline_algae$col, " - Gulf", Baseline_algae$gulf)
+
+Baseline_algae
+
+
+###Wohoo let's try again
+
+Baseline_algae_prop_gulf <- ggplot(Baseline_algae, aes(x = col, y = Abundance, fill = Clade)) +
+  geom_col(position = "fill") +
+  labs(title = "Baseline relative abundance of algal clades at 28.5-degrees",
+       x = "Colony",
+       y = "Relative Proportion") +
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  theme_minimal()
+
+Baseline_algae_prop_gulf+ facet_wrap(~facet_var)
+```
+
+```{r}
+
+Baseline_pergulf <- ggplot(Baseline_algae, aes(x = gulf, y=Abundance, fill = Clade)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  labs(title = "Baseline relative abundance of algal clades across gulfs at 28.5-degrees", x= "Gulf", y = "Abundance", fill = "Clade") +
+  theme_bw()
+  
+Baseline_pergulf
+
+Baseline_pergulf + facet_wrap(~mtorf)
+```
+```{r}
+temp_33_algae_prop <- ggplot(temp_33_algae, aes(x = col, y = Abundance, fill = Clade)) +
+  geom_col(position = "fill") +
+  labs(title = "Baseline relative abundance of algal clades at 33.0-degrees",
+       x = "Colony",
+       y = "Relative Proportion") +
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  theme_minimal()
+
+temp_33_algae_prop
+
+temp_33_algae_prop + facet_wrap(~gulf)
+```
+
+```{r}
+temp_33_algae_pergulf <- ggplot(temp_33_algae, aes(x = gulf, y=Abundance, fill = Clade)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  labs(title = "Baseline relative abundance of algal clades across gulfs at 33.0-degrees", x= "Gulf", y = "Abundance", fill = "Clade") +
+  theme_bw()
+  
+temp_33_algae_pergulf
+
+temp_33_algae_pergulf + facet_wrap(~mtorf)
+```
+
+```{r}
+###Okay what does this suggest? Seems ike mtORF 1, which is P. ver, is quite stable during experiment but things for mtORF 3 different, where at 33-C mtORF 3 in Chiriqui higher D prop but overall all 3 at 33C more D! 
+
+###Curious about 36C...
+
+temp_36_algae <- filter(algae_prop, temp == 36.0, preserve = TRUE)
+
+temp_36_algae
+
+temp_36_algae$col <- as.factor(temp_36_algae$col) 
+
+temp_36_algae
+```
+
+```{r}
+temp_36_algae_pergulf <- ggplot(temp_36_algae, aes(x = gulf, y=Abundance, fill = Clade)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  labs(title = "Baseline relative abundance of algal clades across gulfs at 36-degrees", x= "Gulf", y = "Abundance", fill = "Clade") +
+  theme_bw()
+  
+temp_36_algae_pergulf
+
+temp_36_algae_pergulf + facet_wrap(~mtorf)
+```
+```{r}
+
+###Out of curiosity, let's see 30
+
+temp_30_algae <- filter(algae_prop, temp == 30.0, preserve = TRUE)
+
+temp_30_algae
+
+temp_30_algae$col <- as.factor(temp_30_algae$col) 
+
+temp_30_algae
+
+temp_30_algae_pergulf <- ggplot(temp_30_algae, aes(x = gulf, y=Abundance, fill = Clade)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values = c("C" = "lightgreen", "D" = "violet")) +
+  labs(title = "Baseline relative abundance of algal clades across gulfs at 30-degrees", x= "Gulf", y = "Abundance", fill = "Clade") +
+  theme_bw()
+  
+temp_30_algae_pergulf
+
+temp_30_algae_pergulf + facet_wrap(~mtorf)
+```
+
+
+```{r}
+###Ahhh at 36C EVERYONE MORE D, with Chiriqui >> Panama 
+
+###Let's begin with the original poly2 with our C/D ration as an additional variable!!! 
+
+###Sanity check, rerun sqrtTAC alone and + Region and + mtORF with merged_df
+
+sqrtTAC_lm_t_quad2 <- lm(sqrtTAC ~ poly(Temp, 2), data = merged_df, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_reg2 <- lm(sqrtTAC ~ poly(Temp, 2) + Region, data = merged_df, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_mtORF2 <- lm(sqrtTAC ~ poly(Temp, 2) + mtORF, data = merged_df, na.action = na.exclude)
+```
+
+```{r}
+##Compare output of both models -- should be ID
+
+summary(sqrtTAC_lm_t_quad2)
+
+summary(sqrtTAC_lm_t_quad)
+
+```
+
+```{r}
+##Compare output of both models -- should be ID
+
+summary(sqrtTAC_lm_t_quad_reg2)
+
+summary(sqrtTAC_lm_t_quad_reg)
+```
+
+```{r}
+
+##Compare output of both models -- should be ID
+
+summary(sqrtTAC_lm_t_quad_mtORF2)
+
+summary(sqrtTAC_lm_t_quad_mtORF)
+```
+
+```{r}
+###Wohooo! Now let's add C/D
+
+merged_df
+```
+
+```{r}
+
+sqrtTAC_lm_t_quad_algae <- lm(sqrtTAC ~ poly(Temp, 2) + Relative_Proportion, data = merged_df, na.action = na.exclude)
+
+summary(sqrtTAC_lm_t_quad_algae)
+
+summary(sqrtTAC_lm_t_quad2)
+```
+```{r}
+
+###Okay two samples de mas in TAC are the two samples w/o algal reads, let's prune these
+
+df_subset <- merged_df[!is.na(merged_df$Relative_Proportion), , drop = FALSE]
+
+df_subset 
+
+df_subset2 <- df_subset[!is.na(df_subset$sqrtTAC), , drop = FALSE]
+
+df_subset 
+
+df_subset2
+```
+```{r}
+TAC
+merged_df
+df_subset 
+df_subset2
+```
+
+
+```{r}
+sqrtTAC_lm_t_quad_subset <- lm(sqrtTAC ~ poly(Temp, 2), data = df_subset2 , na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_algae <- lm(sqrtTAC ~ poly(Temp, 2) + Relative_Proportion, data = df_subset2 , na.action = na.exclude)
+```
+
+```{r}
+summary(sqrtTAC_lm_t_quad_subset)
+
+summary(sqrtTAC_lm_t_quad_algae)
+```
+```{r}
+anova(sqrtTAC_lm_t_quad_algae, sqrtTAC_lm_t_quad_subset)
+```
+
+```{r}
+###let's rerun temp + region and + mtORF pruned dataset, for sanity check
+
+sqrtTAC_lm_t_quad_FULL <- lm(sqrtTAC ~ poly(Temp, 2) + mtORF + Region + Relative_Proportion, data = df_subset2, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_reg_subset <- lm(sqrtTAC ~ poly(Temp, 2) + Region, data = df_subset2, na.action = na.exclude)
+
+sqrtTAC_lm_t_quad_mtORF_subset <- lm(sqrtTAC ~ poly(Temp, 2) + mtORF, data = df_subset2, na.action = na.exclude)
+
+```
+
+```{r}
+summary(sqrtTAC_lm_t_quad_reg_subset)
+
+summary(sqrtTAC_lm_t_quad_mtORF_subset)
+
+summary(sqrtTAC_lm_t_quad_FULL)
+```
+```{r}
+##FULL ANOVA FOR SANITY CHECK
+
+anova(sqrtTAC_lm_t_quad_algae, sqrtTAC_lm_t_quad_subset)
+anova(sqrtTAC_lm_t_quad_algae, sqrtTAC_lm_t_quad_reg_subset)
+anova(sqrtTAC_lm_t_quad_algae, sqrtTAC_lm_t_quad_mtORF_subset)
+
+anova(sqrtTAC_lm_t_quad_reg_subset, sqrtTAC_lm_t_quad_mtORF_subset)
+anova(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_mtORF_subset)
+anova(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_reg_subset)
+```
+
+
+```{r}
+
+###Versus full model 
+anova(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_subset)
+anova(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_algae)
+anova(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_mtORF_subset)
+anova(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_reg_subset)
+```
+
+```{r}
+
+###For comparison,let's run an intercept only model
+
+intercept_model <- lm(sqrtTAC ~ 1, data = df_subset2, na.action = na.exclude)
+
+summary(intercept_model)
+```
+
+```{r}
+
+# Calculate AIC values
+AIC(intercept_model, sqrtTAC_lm_t_quad_algae, sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_reg_subset, sqrtTAC_lm_t_quad_mtORF_subset, sqrtTAC_lm_t_quad_FULL)
+
+```
+
+```{r}
+#### VERY INTERESTING!! From this, clear support for a region or orf effect, but an even stronger support for temp or temp + algae!! 
+#### Temp and Temp + algae less than 2AIC pts away from each other but >AIC from region, orf and intercept models
+```
+
+```{r}
+###Okay from talking to Sean (1/18) - done and dusted!
+
+#### To do:
+###### 1. loglik for top models - how much more is algae adding?
+###### 2.  as relevant, posthoc tests
+###### 3. predict.lm() and plot estimates w confidence intervals
+```
+
+```{r}
+###loglik of top three models
+
+logLik(sqrtTAC_lm_t_quad_algae) ###temp 2nd order + algae, -507
+logLik(sqrtTAC_lm_t_quad_subset) ###temp 2nd order only, -508
+logLik(sqrtTAC_lm_t_quad_reg_subset) ###temp 2nd order + region, -508
+logLik(sqrtTAC_lm_t_quad_mtORF_subset) ### temp 2nd order + orf, -508
+logLik(sqrtTAC_lm_t_quad_FULL) ###-505.0981, all terms 
+
+###From this, interesting that in model where have added term for algae, we see that it performs better than temp a;one. altough it is the simpler model -- will move forward with this
+```
+
+```{r}
+### As these are nested, let's do the formalized lmtest
+
+library(lmtest)
+
+lrtest(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_algae)
+
+lrtest(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_reg_subset)
+
+lrtest(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_mtORF_subset)
+
+lrtest(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_subset)
+
+lrtest(sqrtTAC_lm_t_quad_FULL, sqrtTAC_lm_t_quad_algae)
+
+lrtest(sqrtTAC_lm_t_quad_reg_subset, sqrtTAC_lm_t_quad_mtORF_subset)
+
+lrtest(sqrtTAC_lm_t_quad_reg_subset, sqrtTAC_lm_t_quad_algae)
+
+lrtest(sqrtTAC_lm_t_quad_mtORF_subset, sqrtTAC_lm_t_quad_algae)
+
+### important, here see that p-value is not below our alpha of 0.05 therefore both models fit equally well and will default temp alone as add algae does not improve fit
+```
+
+```{r}
+anova(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_algae)
+
+anova(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_reg_subset)
+
+anova(sqrtTAC_lm_t_quad_subset, sqrtTAC_lm_t_quad_mtORF_subset)
+```
+
+```{r}
+##BEST MODEL: sqrtTAC_lm_t_quad_subset = sqrtTAC ~ poly(Temp, 2)
+
+summary(sqrtTAC_lm_t_quad_subset)
+```
+
+```{r}
+
+###let's plot predictions
+
+df_subset2
+
+```
+
+```{r}
+
+df.pivot.TAC <- df_subset2[c("Temp")]
+
+df.pivot.TAC
+```
+```{r}
+###Only have df with Temp and sqrtTAC wohoo!
+
+###Let's now run predict.lm()
+
+predict.TAC.lm <- predict.lm(sqrtTAC_lm_t_quad_subset, df.pivot.TAC, se.fit = FALSE,
+        interval = "confidence",
+        level = 0.95, type = "response", na.action = na.omit)
+
+predict.TAC.lm
+```
+
+```{r}
+###Let's plot these predictions
+
+TAC.predict.plot <- cbind(df_subset2,predict.TAC.lm)
+
+TAC.predict.plot
+```
+```{r}
+p <- ggplot(TAC.predict.plot, aes(Temp, sqrtTAC)) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ x + I(x^2), se = FALSE)  
+
+p
+```
+
+```{r}
+###Add CI
+
+p2 <- p + geom_line(aes(y = lwr), color = "red", linetype = "dashed")+
+    geom_line(aes(y = upr), color = "red", linetype = "dashed") + theme_bw()
+
+p2
+```
+
+```{r}
+p.1 <- ggplot(TAC.predict.plot, aes(Temp, sqrtTAC)) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ x + I(x^2), se = TRUE) + theme_bw()
+
+p.1
+```
+
+```{r}
+
+###Let's try for it to be less rigid
+
+p2.2 <- p + geom_ribbon(aes(ymin = lwr, ymax = upr, fill= "confidence"), color = "red", linetype = "dashed") 
+   
+
+p2.2
+```
+
+```{r}
+
+p3 <- p2 + facet_wrap(~Region) + theme_bw()
+
+p3 
+
+p4 <- p2 +  facet_wrap(~mtORF)+ theme_bw()
+
+p4
+
+```
+
+```{r}
+TAC.predict.plot 
+
+max_fit_TAC <- max(TAC.predict.plot$fit)
+
+max_fit_TAC
+
+###See entire row
+max_row <- TAC.predict.plot[which.max(TAC.predict.plot$fit), ]
+
+max_row
+```
+
+```{r}
+p5 <- p2 +  facet_wrap(~mtORF + Region) + theme_bw()
+
+p5
+```
+
+```{r}
+
+```
+
