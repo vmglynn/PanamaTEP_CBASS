@@ -8,9 +8,9 @@ Glynn, V. M., Marangoni, L. F. de B, M., Guglielmetti, M., Yuval, M., Tapia, E. 
 #### Contents
 This repository contains six folders:
 
-* "Population genetics" : Commands and files used for GenPipes' SNP-by-genotyping analyses, and R scripts for downstream population genetic analyses
+* "Population genetics" : R scripts for downstream population genetic analyses, and associated sample metadata and input files (e.g. vcf files) 
 
-* "ITS2" : R scripts for ITS2 marker-gene alpha and beta diversity analyses using SymPortal's taxonomic assignment
+* "ITS2" : R scripts for ITS2 marker-gene alpha and beta diversity analyses using SymPortal's taxonomic assignment on the basis of intragenomic variants (DIVs)
 
 * "16S" : R scripts to generate amplicon sequence variants (ASVs) from our 16S marker-gene data using DADA2 (Callahan et al., 2016), the resulting RDS file from DADA2, and alpha and beta diversity analyses of this data
 
