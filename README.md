@@ -12,7 +12,7 @@ This repository contains six folders:
 
 * "ITS2" : R scripts for ITS2 marker-gene alpha and beta diversity analyses using SymPortal's taxonomic assignment on the basis of intragenomic variants (DIVs)
 
-* "16S" : R scripts to generate amplicon sequence variants (ASVs) from our 16S marker-gene data using DADA2 (Callahan et al., 2016), the resulting RDS file from DADA2, and alpha and beta diversity analyses of this data
+* "16S" : R scripts to generate amplicon sequence variants (ASVs) from our 16S marker-gene data using DADA2 (Callahan et al., 2016), the resulting RDS file from DADA2, and beta diversity analyses of this data
 
 * "Physiology" : R scripts for host protein and chlorophyll *a* models, alongside the associated data  
 
