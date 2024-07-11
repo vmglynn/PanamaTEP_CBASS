@@ -1,0 +1,1465 @@
+
+```{r}
+##load packages
+
+rm(list = ls())
+library(vctrs)
+library(ggplot2)
+library(purrr)
+library(kableExtra)
+library(reshape2)
+library(stringr)
+library(magrittr)
+library(randomForest)
+library(knitr)
+library(seqinr)
+library(metagMisc)
+library(gridExtra)
+library(vegan)
+library(plotly)
+library(dplyr)
+library(indicspecies)
+library(yhat)
+library("dunn.test"); packageVersion("dunn.test")
+library(tidyverse)
+library(devtools)
+library(BiocParallel)
+library(matrixStats)
+library(MatrixGenerics)
+library(DelayedArray)
+library(RSQLite)
+library(Biostrings)
+library(DESeq2)
+library(genefilter)
+library(phyloseq)
+```
+
+
+```{r}
+ps <- readRDS("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\16S\\geno_18Oct2022\\symITSps_16S_CBASS_18Oct2022.rds")
+```
+
+```{r}
+
+##Ensure sample data well-merged
+sample_data(ps)
+```
+
+```{r}
+otu <- otu_table(ps)
+##tre <- phy_tree(ps)
+sam <- sample_data(ps)
+tax <- tax_table(ps)
+```
+
+```{r}
+##Further tax exploration
+table(tax_table(ps)[, "Kingdom"], exclude = NULL)
+
+table(tax_table(ps)[, "Phylum"], exclude = NULL)
+
+table(tax_table(ps)[, "Class"], exclude = NULL)
+
+table(tax_table(ps)[, "Order"], exclude = NULL)
+
+table(tax_table(ps)[, "Genus"], exclude = NULL)
+
+table(tax_table(ps)[, "Species"], exclude = NULL)
+
+```
+
+
+```{r}
+###set random seed downstream st
+
+set.seed(100)
+``` 
+
+```{r}
+## rarecurve(otu, step = 100, col = "blue", 
+          ##cex = 0.6,
+          ## main = "Rarefaction curve, 16S amplicon")
+```
+
+```{r}
+##Inspect library sizes
+
+df <- as.data.frame(sample_data(ps)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ps)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=type)) + geom_point()
+
+```
+
+```{r}
+sample_data(ps)
+```
+
+```{r}
+ps
+
+ps <- prune_taxa(taxa_sums(ps) > 0, ps)
+any(taxa_sums(ps) == 0)
+
+##Remove all ctrl samples
+
+##library("microbiome")
+
+
+##ps_c <- remove_samples(c("16S-PlA-E5","16S-PlA-E6","16S-PlA-E7","16S-PlA-E8","16S-PlB-E7","16S-PlB-E8","16S-PlC-E7","16S-PlC-E8","16S-PlD-E8","16S-PlA-H12","16S-PlB-H12","16S-PlC-H12","16S-PlD-H12","16S-PlA-H10","16S-PlB-H10","16S-PlC-H10","16S-PlD-H10"), ps)
+
+##sample_names(ps_c)
+```
+
+```{r}
+
+##Removing ASVs of chloroplast
+ps_filt10 <- subset_taxa(ps, Order != "Chloroplast" | is.na(Order))
+ps_filt10
+
+##Removing ASVs of mitochondria
+ps_filt10 <- subset_taxa(ps_filt10, Family != "Mitochondria" | is.na(Family))
+ps_filt10
+
+##Removing ASVs assigned to Eukaryotes and unassigned (NA) at the kingdom level
+ps_filt10 <- subset_taxa(ps_filt10, Kingdom != "Eukaryota")
+ps_filt10
+
+ps_filt10 <- subset_taxa(ps_filt10, Kingdom != "Unassigned")
+
+ps_filt10
+```
+
+```{r}
+ntaxa(ps_filt10) # 1,835
+# 
+get_taxa_unique(ps_filt10, "Phylum") %>% length() #36
+get_taxa_unique(ps_filt10, "Class") %>% length() #73
+get_taxa_unique(ps_filt10, "Order") %>% length() #179
+get_taxa_unique(ps_filt10, "Family") %>% length() #295
+get_taxa_unique(ps_filt10, "Genus") %>% length() #484
+```
+```{r}
+##Remove control sample's ASVs
+
+library(decontam)
+
+sample_data(ps_filt10)$is.neg <- sample_data(ps_filt10)$type == "NEG_A"
+
+contamdf.prev <- isContaminant(ps_filt10, method="prevalence", neg="is.neg", threshold=0.5)
+
+table(contamdf.prev$contaminant)
+```
+```{r}
+sample_data(ps_filt10)$is.neg <- sample_data(ps_filt10)$type == "NEG_B"
+
+contamdf.prevB <- isContaminant(ps_filt10, method="prevalence", neg="is.neg", threshold=0.5)
+
+table(contamdf.prevB$contaminant)
+```
+```{r}
+sample_data(ps_filt10)$is.neg <- sample_data(ps_filt10)$type == "NEG_C"
+
+contamdf.prevC <- isContaminant(ps_filt10, method="prevalence", neg="is.neg", threshold=0.5)
+
+table(contamdf.prevC$contaminant)
+```
+```{r}
+sample_data(ps_filt10)$is.neg <- sample_data(ps_filt10)$type == "NEG_D"
+
+contamdf.prevD <- isContaminant(ps_filt10, method="prevalence", neg="is.neg", threshold=0.5)
+
+table(contamdf.prevD$contaminant)
+```
+```{r}
+head(which(contamdf.prevD$contaminant))
+```
+```{r}
+ps.pa <- transform_sample_counts(ps_filt10, function(abund) 1*(abund>0))
+
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$type == "NEG_D", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$type == "S", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                      contaminant=contamdf.prevD$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+```{r}
+ps_decontam1 <- prune_taxa(!contamdf.prevD$contaminant, ps_filt10)
+
+ps_decontam1
+```
+
+
+```{r}
+sample_data(ps_decontam1)$is.neg <- sample_data(ps_decontam1)$type == "C"
+
+contamdf.prev_ext <- isContaminant(ps_decontam1, method="prevalence", neg="is.neg", threshold=0.5)
+
+table(contamdf.prev_ext$contaminant)
+```
+```{r}
+head(which(contamdf.prev_ext$contaminant))
+```
+```{r}
+ps.pa <- transform_sample_counts(ps_decontam1, function(abund) 1*(abund>0))
+
+ps.pa.neg2 <- prune_samples(sample_data(ps.pa)$type == "C", ps.pa)
+ps.pa.pos2 <- prune_samples(sample_data(ps.pa)$type == "S", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa2 <- data.frame(pa.pos2=taxa_sums(ps.pa.pos2), pa.neg2=taxa_sums(ps.pa.neg2),
+                      contaminant=contamdf.prev_ext$contaminant)
+ggplot(data=df.pa2, aes(x=pa.neg2, y=pa.pos2, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+```
+```{r}
+##Remove controls and contaminants from above
+
+ps_decontam2 <- prune_taxa(!contamdf.prev_ext$contaminant, ps_decontam1)
+
+ps_decontam2
+```
+```{r}
+##Remove overall extraction controls so don't have sample data as "ghost" entries, but at this point associated contamination ASVs already removed above 
+ps_cont_final <- subset_samples(ps_decontam2, type != "C")
+
+##Samples overall that were positive ctrl 
+ps_cont_final <- subset_samples(ps_cont_final, type != "POS_A")
+ps_cont_final <- subset_samples(ps_cont_final, type != "POS_B")
+ps_cont_final <- subset_samples(ps_cont_final, type != "POS_C")
+ps_cont_final <- subset_samples(ps_cont_final, type != "POS_D")
+
+##Samples overall that were negative ctrl 
+ps_cont_final <- subset_samples(ps_cont_final, type != "NEG_A")
+ps_cont_final <- subset_samples(ps_cont_final, type != "NEG_B")
+ps_cont_final <- subset_samples(ps_cont_final, type != "NEG_C")
+ps_cont_final <- subset_samples(ps_cont_final, type != "NEG_D")
+```
+
+```{r}
+ps
+
+ps_filt10
+
+ps_decontam1
+
+ps_decontam2
+
+ps_cont_final
+```
+
+```{r}
+library(metagMisc)
+
+ps_filt10_clean <- na.omit(ps_cont_final)
+
+p <- plot_richness(ps_filt10_clean, x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon"))
+
+##ps_filtered <- prune_species(speciesSums(ps_filt10) > 0, ps_filt10)
+
+##ps_filtered <- filter_taxa(ps_filt10, function(x) mean(x) > 3, TRUE)
+  
+```
+
+```{r}
+p
+```
+```{r}
+p +  geom_boxplot() + geom_point() + facet_wrap(~reef) 
+```
+
+```{r}
+ps_Pan <- subset_samples(ps_filt10_clean, gulf=="Panama")
+sample_data(ps_Pan)
+
+ps_Chr <- subset_samples(ps_filt10_clean, gulf=="Chiriqui")
+sample_data(ps_Chr)
+
+```
+
+```{r}
+alpha_Panama <- plot_richness(ps_Pan, x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon"))
+
+alpha_Panama  +  geom_boxplot() + geom_point() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + theme_bw()
+```
+```{r}
+alpha_Panama  +  geom_boxplot() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + theme_bw() 
+```
+
+```{r}
+alpha_Chr <- plot_richness(ps_Chr, x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon"))
+
+alpha_Chr  +  geom_boxplot() + geom_point() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + theme_bw()
+```
+
+
+```{r}
+##Look at patterns across single MLG that is in both gulfs, control geno
+
+ps_MLG <- subset_samples(ps_filt10_clean, geno=="9")
+```
+
+```{r}
+p_MLG <- plot_richness(ps_MLG, x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon"))
+
+p_MLG
+```
+```{r}
+p_MLG +  geom_boxplot() + geom_point() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + theme_bw()
+```
+
+```{r}
+##Subset by gulf
+
+ps_MLG_Pan <- subset_samples(ps_MLG, gulf=="Panama")
+sample_data(ps_MLG_Pan)
+
+ps_MLG_Chr <- subset_samples(ps_MLG, gulf=="Chiriqui")
+sample_data(ps_MLG_Chr)
+
+```
+
+```{r}
+alpha_MLG_Panama <- plot_richness(ps_MLG_Pan, x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon"))
+
+alpha_MLG_Panama  +  geom_boxplot() + geom_point() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))
+
+```
+
+```{r}
+alpha_MLG_Ch <- plot_richness(ps_MLG_Chr , x="temp", color = "temp",  measures=c("Chao1", "ACE", "Shannon")) + theme_bw()
+
+alpha_MLG_Ch +  geom_boxplot() + geom_point() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))
+```
+```{r}
+###Test for stat significance of alpha div trends above
+
+#### first make df with measures of interest and variables
+
+meta = as(sample_data(ps_filt10_clean), "data.frame")
+
+Chao1 <- phyloseq::estimate_richness(ps_filt10_clean, measures = "Chao1")
+
+ACE <- phyloseq::estimate_richness(ps_filt10_clean, measures = "ACE")
+
+Shannon <- phyloseq::estimate_richness(ps_filt10_clean, measures = "Shannon")
+
+adiv <- cbind(Chao1, ACE, Shannon, meta)
+
+head(adiv)
+```
+```{r}
+shapiro.test(adiv$Chao1)
+shapiro.test(adiv$ACE)
+shapiro.test(adiv$Shannon)
+
+
+##not normally distributed 
+```
+```{r}
+library(car)
+leveneTest(Chao1 ~ gulf * temp , data = adiv)
+leveneTest(ACE ~ gulf * temp , data = adiv)
+leveneTest(Shannon ~ gulf * temp , data = adiv)
+
+## we do have  Homogeneity of Variance !
+```
+
+```{r}
+## See if alpha div vary stat significantly 
+
+###Across gulfs 
+
+kruskal.test(Chao1 ~ gulf, data = adiv)
+
+kruskal.test(ACE ~ gulf, data = adiv)
+
+kruskal.test(Shannon ~ gulf, data = adiv)
+
+###Across temp 
+
+kruskal.test(Chao1 ~ temp, data = adiv)
+
+kruskal.test(ACE ~ temp, data = adiv)
+
+kruskal.test(Shannon ~ temp, data = adiv)
+```
+```{r}
+###Pairwise tests
+
+chao1_gulf <- wilcox.test(Chao1 ~ gulf, data = adiv, paired = TRUE)
+
+chao1_gulf
+```
+
+```{r}
+ACE_gulf <- wilcox.test(ACE ~ gulf, data = adiv, paired = FALSE)
+
+ACE_gulf
+```
+
+```{r}
+
+Sh_gulf <- wilcox.test(Shannon ~ gulf, data = adiv, paired = TRUE)
+
+Sh_gulf
+
+```
+
+```{r}
+
+pairwise.wilcox.test(adiv$Chao1, adiv$temp,
+                 p.adjust.method = "BH", exact = FALSE)
+
+pairwise.wilcox.test(adiv$ACE, adiv$temp,
+                 p.adjust.method = "BH", exact = FALSE)
+
+pairwise.wilcox.test(adiv$Shannon, adiv$temp,
+                 p.adjust.method = "BH", exact = FALSE)
+
+#### That’s why we see the warning message “cannot compute exact p-value with ties” above. R uses normal approximation to calculate the p-value. The reason is that the p-value is adjusted by the continuity correction which is supposed to be more accurate. We will not go into detail the concept of continuity correction here. To get the p-value we calculated above, we can use the option correct=FALSE to turn off the continuity correction. 
+
+####Yet with exact = FALSE, same p-value as before ! Sanity check 
+```
+
+```{r}
+library(FSA)
+
+dunnTest(Chao1 ~ temp,
+              data=adiv,
+              method="bh")
+
+dunnTest(ACE ~ temp,
+              data=adiv,
+              method="bh")
+
+dunnTest(Shannon ~ temp,
+              data=adiv,
+              method="bh")
+```
+```{r}
+##However, need to instead model to best represent interaction effect, as follows: 
+```
+
+```{r}
+### First run st lm models
+
+mod.chao <- lm(Chao1 ~ reef/gulf * temp + geno, data = adiv)
+
+mod.ace <- lm(ACE ~ reef/gulf * temp + geno, data = adiv)
+
+mod.shannon <- lm(Shannon ~ reef/gulf * temp + geno, data = adiv)
+
+mod.chao.stdres = rstandard(mod.chao)
+
+boxplot(mod.chao.stdres ~ meta$reef)
+
+boxplot(mod.chao.stdres ~ meta$gulf)
+
+mod.ace.stdres = rstandard(mod.ace)
+
+##boxplot(mod.ace.stdres ~ meta$reef) 
+
+## boxplot(mod.ace.stdres ~ meta$gulf) 
+
+mod.shannon.stdres = rstandard(mod.shannon)
+
+boxplot(mod.shannon.stdres ~ meta$reef)
+
+boxplot(mod.shannon.stdres ~ meta$gulf)
+
+boxplot(mod.shannon.stdres ~ meta$temp)
+
+```
+
+```{r}
+ggplot(meta, aes(x = gulf, y = mod.chao.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+ggplot(meta, aes(x = reef, y = mod.chao.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+ggplot(meta, aes(x = temp, y = mod.chao.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+##ggplot(meta, aes(x = gulf, y = mod.ace.stdres)) + geom_boxplot() + 
+#geom_jitter(height = 0, width = .2)
+
+##ggplot(meta, aes(x = reef, y = mod.ace.stdres)) + geom_boxplot() + 
+##geom_jitter(height = 0, width = .2)
+
+ggplot(meta, aes(x = gulf, y = mod.shannon.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+ggplot(meta, aes(x = reef, y = mod.shannon.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+ggplot(meta, aes(x = temp, y = mod.shannon.stdres)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+```
+
+```{r}
+##QQplots
+
+plot(mod.chao.stdres)
+
+plot(mod.ace.stdres)
+
+plot(mod.shannon.stdres)
+```
+
+```{r}
+##Boxplots st residuals
+e.mod.chao <- resid(mod.chao)
+
+boxplot(e.mod.chao~adiv$temp)
+
+##Jitter boxplot with st residuals
+ggplot(meta, aes(x = temp, y = e.mod.chao)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+qqnorm(e.mod.chao,col="firebrick",abline = c(0,1))
+```
+
+```{r}
+e.mod.ace <- resid(mod.ace)
+
+##boxplot(e.mod.ace~adiv$temp)
+
+##Jitter boxplot with st residuals
+##ggplot(meta, aes(x = loc, y = e.mod.ace)) + geom_boxplot() + 
+##geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+##qqnorm(e.mod.ace,col="firebrick",abline = c(0,1))
+```
+
+```{r}
+e.mod.shannon <- resid(mod.shannon)
+
+boxplot(e.mod.shannon~adiv$temp)
+
+##Jitter boxplot with st residuals
+ggplot(meta, aes(x = temp, y = e.mod.shannon)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+qqnorm(e.mod.shannon,col="firebrick",abline = c(0,1))
+```
+
+```{r}
+
+## from above, some issues with errors/variance and thus move onto gls
+
+library(nlme)
+
+chao.gls <- nlme::gls(Chao1 ~ temp * reef/gulf + geno, data = adiv, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+summary(chao.gls)
+##Boxplots st residuals
+e.chao.gls <- resid(chao.gls, type = "normalized")
+
+boxplot(e.chao.gls~adiv$temp)
+
+##Jitter boxplot with st residuals
+ggplot(adiv, aes(x = temp, y = e.chao.gls)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+qqnorm(e.chao.gls,col="firebrick",abline = c(0,1))
+
+plot(chao.gls)
+```
+
+```{r}
+    ace.gls <- nlme::gls(ACE ~ temp * reef/gulf + geno, data = adiv, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+summary(ace.gls)
+
+###ace.gls <- gls(ACE ~ temp * reef/gulf + geno, data = adiv, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+
+##Boxplots st residuals
+e.ace.gls <- resid(ace.gls, type = "normalized")
+
+boxplot(e.ace.gls~adiv$temp)
+
+##Jitter boxplot with st residuals
+ggplot(adiv, aes(x = temp, y = e.ace.gls)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+qqnorm(e.ace.gls,col="firebrick",abline = c(0,1))
+
+plot(ace.gls)
+```
+
+```{r}
+s.gls <- nlme::gls(Shannon ~ temp * reef/gulf + geno, data = adiv, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+summary(s.gls)
+
+##Boxplots st residuals
+e.s.gls <- resid(s.gls, type = "normalized")
+
+boxplot(e.s.gls~adiv$temp)
+
+##Jitter boxplot with st residuals
+ggplot(adiv, aes(x = temp, y = e.s.gls)) + geom_boxplot() + geom_jitter(height = 0, width = .2)
+
+##qqplots with st residuals
+qqnorm(e.s.gls,col="firebrick",abline = c(0,1))
+
+plot(s.gls)
+```
+
+
+
+```{r}
+## Remove singletons
+ps_filtered  <- filter_taxa(ps_filt10_clean, function(x) sum(x > 1) > 1, TRUE)
+
+```
+
+```{r}
+##compare original vs filtered ps file
+
+ps 
+
+ps_filt10_clean
+
+ps_filtered
+```
+
+```{r}
+###rlog transformation
+library(GenomicRanges)
+library("SummarizedExperiment")
+
+otu_table(ps_filtered) <- otu_table(ps_filtered) + 1 
+
+##add 1 pseudocount
+
+dds = phyloseq_to_deseq2(ps_filtered, ~ 1)
+rld <- DESeq2::rlog(dds, blind = TRUE, fitType = "local")
+
+##note: fitType='parametric', but the dispersion trend was not well captured by thefunction: y = a/x + b, and a local regression fit was automatically substituted. specify fitType='local' or 'mean' to avoid this message next time.
+
+```
+
+```{r}
+library(DESeq2)
+rlogMat <- assay(rld)
+physeq1 = ps_filtered
+otu_table(physeq1) <- otu_table(rlogMat, taxa_are_rows = TRUE)
+
+```
+
+```{r}
+physeq1
+
+table(tax_table(physeq1)[, "Kingdom"], exclude = NULL)
+
+table(tax_table(physeq1)[, "Phylum"], exclude = NULL)
+
+table(tax_table(physeq1)[, "Class"], exclude = NULL)
+
+table(tax_table(physeq1)[, "Order"], exclude = NULL)
+
+table(tax_table(physeq1)[, "Genus"], exclude = NULL)
+
+table(tax_table(physeq1)[, "Species"], exclude = NULL)
+```
+
+```{r}
+
+## Set random seed for reproducibility 
+
+set.seed(8765)
+
+```
+
+```{r}
+# agglomerate taxa
+
+##top 10 order only
+
+phylum.sum = tapply(taxa_sums(physeq1), tax_table(physeq1)[, "Order"], sum, na.rm=TRUE)
+top10 = names(sort(phylum.sum, TRUE))[1:10]
+physeq2 = prune_taxa((tax_table(physeq1)[, "Order"] %in% top10), physeq1)
+```
+
+```{r}
+physeq2
+```
+
+```{r}
+
+ps.rel = transform_sample_counts(physeq2, function(otu) otu/sum(otu)*100)
+
+glom <- tax_glom(ps.rel , taxrank = "Order", NArm = FALSE)
+
+## remove NAs
+
+glom2 <- phyloseq_rm_na_tax(glom) 
+
+ps.melt <- psmelt(glom2)
+
+# change to character for easy-adjusted level
+ps.melt$Order <- as.character(ps.melt$Order)
+
+ps.melt <- ps.melt %>%
+  group_by(reef, Order) %>%
+  mutate(median=median(Abundance))
+
+ps.melt <- na.omit(ps.melt)
+```
+
+
+```{r}
+
+##Genera across temp
+
+Order_temp <- ggplot(ps.melt, aes(x = temp, y = Order, color = Order)) + geom_point(aes(size = Abundance)) + scale_colour_hue(guide = "none") +  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+Order_temp
+```
+
+```{r fig.width=15, fig.height=4}
+
+# Fix reef levels in sample_data
+
+sample_data(physeq1)$reef <- factor(
+  sample_data(physeq1)$reef, 
+  levels = c("AFU_A", "UVA_A", "MOG_A", "SAB_A"))
+
+
+p2 <- Order_temp + facet_wrap(~gulf, 1) + theme(panel.spacing = unit(1, "lines")) + scale_x_discrete(expand = c(0, 1))
+
+p2
+```
+
+```{r}
+
+ps_phylum <- physeq2 %>%
+  tax_glom(taxrank = "Order") %>%                     # agglomerate at class level
+  transform_sample_counts(function(otu) otu/sum(otu)*100) %>% # Transform to rel. abundance
+  psmelt() %>%                                         # Melt to long format
+  filter(Abundance > 0.02) %>%                         # Filter out low abundance taxa
+  arrange("Order")                                      # Sort data frame alphabetically by phylum
+
+```
+
+```{r}
+
+# Plot 
+ggplot(ps_phylum, aes(x = temp, y = Abundance, fill = Order)) + 
+  facet_grid(gulf~.) +
+  geom_bar(stat = "identity") + theme_bw()
+```
+```{r}
+set.seed(111)
+library(viridis)
+
+Temp_differences_gulf_mtORF <-
+  ggplot(ps_phylum, aes(x = temp, y=Abundance, fill = Order)) +
+  geom_col(position = "fill") +
+  facet_wrap(gulf~mtorf, scales = "free", ncol = 5) +
+  labs(title = "Prokaryotic relative abundances across mtORF type and Gulf", x= "mtORF Type", y = "Relative abundance", fill = "Order") +
+  theme_bw() 
+
+Temp_differences_gulf_mtORF + scale_fill_viridis(discrete = TRUE)
+```
+
+```{r}
+
+dotplot_temp_differences_gulf_mtORF  <- ggplot(ps_phylum, aes(x = temp, y = Order, color = Order)) + geom_point(aes(size = Abundance)) +  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank(), axis.line = element_line(colour = "black")) 
+
+dotplot_temp_differences_gulf_mtORF
+
+dotplot_temp_differences_gulf_mtORF + facet_wrap(gulf~mtorf)
+  
+```
+
+```{r}
+library(scales)
+
+set.seed(10003)
+
+ord <- ordinate(physeq1, "PCoA", "bray")
+
+# Fix reef levels in sample_data
+sample_data(physeq1)$reef <- factor(
+  sample_data(physeq1)$reef, 
+  levels = c("AFU_A", "UVA_A", "MOG_A", "SAB_A"))
+
+```
+
+```{r}
+p1 = plot_ordination(physeq1, ord, color="temp") + stat_ellipse()
+p1 
+```
+
+```{r}
+p2 <- p1 + facet_wrap(~reef, 1) + stat_ellipse() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))  + theme_bw()  
+
+p2
+```
+```{r}
+p3 <- p1 + facet_wrap(~gulf, 1) + stat_ellipse() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))  + theme_bw()  
+
+p3 
+```
+
+```{r}
+set.seed(10003)
+
+ps_nmds <- ordinate(
+  physeq = physeq1, 
+  method = "NMDS", 
+  distance = "bray"
+)
+```
+
+```{r}
+plot_ordination(
+  physeq = physeq1,
+  ordination = ps_nmds,
+  color = "temp",
+  shape = "reef") 
+
+```
+
+```{r}
+plot_ordination(
+  physeq = physeq1,
+  ordination = ps_nmds,
+  color = "temp") + facet_wrap(~reef, 1) + stat_ellipse() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))  + theme_bw()  
+
+```
+
+```{r}
+plot_ordination(
+  physeq = physeq1,
+  ordination = ps_nmds,
+  color = "temp") + facet_wrap(~gulf, 1) + stat_ellipse() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))  + theme_bw()  
+```
+```{r}
+plot_ordination(
+  physeq = physeq1,
+  ordination = ps_nmds,
+  color = "temp") + facet_wrap(~geno, 1) + stat_ellipse() +  scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))  + theme_bw() 
+```
+```{r}
+plot_ordination(
+  physeq = physeq1,
+  ordination = ps_nmds, 
+  color = "geno", shape = "temp") + facet_wrap(~gulf, 1) 
+```
+
+```{r}
+##Try DBRDA
+
+# CAP ordinate using Bray Curtis dissimilarity 
+set.seed(23234) 
+
+ps.cap.bray <- phyloseq::distance(physeq1, method = "bray") # CAP ordinate 
+
+cap_ord <- ordinate(physeq = physeq1,  
+                    method = "CAP", 
+                    distance = "bray", 
+                    formula = ~ temp * gulf)
+
+## Here, I am running a formula where I am determining how temp is driving differences in prokaryotic community composition, setting as my "condition," which for CCA (where the formula notation is borrowed from), functions like a grouping variable. Here condition = gulf: reef, as we have an a priori that location will modulate responses to thermal stress
+```
+
+```{r}
+
+# chech which asix are explaining how mauch variation
+
+scree.cap <- plot_scree(cap_ord, "Scree Plot for MCs in Constrained Analysis of Principal Coordinates (CAPSCALE)")
+print(scree.cap)
+
+```
+
+```{r}
+# CAP plot 
+cap_plot <- plot_ordination(physeq = physeq1, 
+                            ordination = cap_ord, type="samples",
+                            color = "temp") + 
+  geom_point(aes(colour = temp), size = 3) + 
+  geom_point(size = 3) + theme_bw() +
+  stat_ellipse() +
+   scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))
+
+cap_plot + ggtitle("CAP Plot")  
+```
+
+```{r}
+cap_plot + ggtitle("CAP_Plot")  + facet_wrap(~ gulf) + theme_bw()
+```
+```{r}
+cap_plot + stat_ellipse() + theme_bw()
+```
+
+
+```{r}
+###ggsave("./output/CAP_plot.pdf", height = 8, width = 10)
+```
+
+```{r}
+
+# Now add the environmental variables as arrows 
+arrowmat <- vegan::scores(cap_ord, display = "bp")
+
+# Add labels, make a data.frame 
+arrowdf <- data.frame(labels = rownames(arrowmat), arrowmat)
+
+# Define the arrow aesthetic mapping 
+arrow_map <- aes(xend = CAP1, 
+                 yend = CAP2, 
+                 x = 0, y = 0, 
+                 shape = NULL, 
+                 color = NULL, 
+                 label = labels) 
+
+label_map <- aes(x = 1.3 * CAP1, y = 1.3 * CAP2, 
+                 shape = NULL, 
+                 color = NULL,
+                 label = labels)  
+
+arrowhead = arrow(length = unit(0.02, "npc")) 
+```
+
+```{r}
+##now plot the arrow
+cap_plot <- cap_plot + geom_segment(mapping = arrow_map, size = .7, 
+                        data = arrowdf, color = "black", 
+                        arrow = arrowhead) + 
+  geom_text(mapping = label_map, size = 4,  
+            data = arrowdf, 
+            show.legend = TRUE) + ggtitle("CAP_Plot")  + theme_bw() 
+```
+
+```{r}
+print(cap_plot)
+```
+```{r}
+###Now add geno in!
+
+cap_ord_geno <- ordinate(physeq = physeq1,  
+                    method = "CAP", 
+                    distance = ps.cap.bray, 
+                    formula = ~ temp * gulf + geno)
+
+# chech which asix are explaining how mauch variation
+
+scree.cap <- plot_scree(cap_ord_geno, "Scree Plot for MCs in Constrained Analysis of Principal Coordinates (CAPSCALE)")
+print(scree.cap)
+```
+
+```{r}
+# CAP plot 
+cap_plot <- plot_ordination(physeq = physeq1, 
+                            ordination = cap_ord_geno, 
+                            color = "temp", 
+                            axes = c(1,2)) + 
+  geom_point(aes(colour = temp), size = 3) + 
+  geom_point(size = 3) +
+   scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014"))
+
+cap_plot + ggtitle("CAP_Plot")  + theme_bw() 
+```
+
+```{r}
+# Now add the environmental variables as arrows 
+arrowmat.g <- vegan::scores(cap_ord_geno, display = "bp")
+
+# Add labels, make a data.frame 
+arrowdf.g <- data.frame(labels = rownames(arrowmat.g), arrowmat.g)
+
+# Define the arrow aesthetic mapping 
+arrow_map.g <- aes(xend = CAP1, 
+                 yend = CAP2, 
+                 x = 0, y = 0, 
+                 shape = NULL, 
+                 color = NULL, 
+                 label = labels) 
+
+label_map.g <- aes(x = 1.3 * CAP1, y = 1.3 * CAP2, 
+                 shape = NULL, 
+                 color = NULL,
+                 label = labels)  
+
+arrowhead.g = arrow(length = unit(0.02, "npc")) 
+```
+
+```{r}
+cap_plot.g <- cap_plot + geom_segment(mapping = arrow_map.g, size = .7, 
+                        data = arrowdf.g, color = "black", 
+                        arrow = arrowhead.g) + 
+  geom_text(mapping = label_map, size = 4,  
+            data = arrowdf.g, 
+            show.legend = TRUE) + ggtitle("CAP_Plot")  + theme_bw() 
+```
+
+```{r}
+print(cap_plot.g)
+```
+```{r}
+# CAP ordinate using Bray Curtis dissimilarity, mirroring ITS where gulf / mtORF
+set.seed(23234) 
+
+ps.cap.bray <- phyloseq::distance(physeq1, method = "bray") # CAP ordinate 
+
+cap_ord_gulf_mtorf <- ordinate(physeq = physeq1,  
+                    method = "CAP", 
+                    distance = "bray", 
+                    formula = ~ temp * gulf / mtorf)
+
+## Here, I am running a formula where I am determining how temp is driving differences in prokaryotic community composition, setting as my "condition," which for CCA (where the formula notation is borrowed from), functions like a grouping variable. Here condition = gulf: reef, as we have an a priori that location will modulate responses to thermal stress
+```
+
+```{r}
+
+# chech which asix are explaining how mauch variation
+
+scree.cap.2 <- plot_scree(cap_ord_gulf_mtorf , "Scree Plot for MCs in Constrained Analysis of Principal Coordinates (CAPSCALE)")
+print(scree.cap.2)
+
+```
+
+```{r}
+# CAP plot 
+cap_plot_gulf_mtorf <- plot_ordination(physeq = physeq1, 
+                            ordination = cap_ord_gulf_mtorf, type="samples",
+                            color = "temp") + 
+  geom_point(aes(colour = temp), size = 3) + 
+  geom_point(size = 3) + theme_bw() +
+  stat_ellipse() +
+   scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + facet_wrap(~gulf ~ mtorf) + labs(title = "CAP ordination by mtORF type and gulf", color = "Temperature")
+
+
+cap_plot_gulf_mtorf
+
+###no stat ellipses, for ease of viewing
+
+cap_plot_gulf_mtorf2 <- plot_ordination(physeq = physeq1, 
+                            ordination = cap_ord_gulf_mtorf, type="samples",
+                            color = "temp") + 
+  geom_point(aes(colour = temp), size = 3) + 
+  geom_point(size = 3) + theme_bw() +
+   scale_colour_manual(values = c("#0097FF", "#FF8B00", "#F5230E", "#972014")) + facet_wrap(~gulf ~ mtorf) + labs(title = "CAP ordination by mtORF type and gulf", color = "Temperature")
+
+
+cap_plot_gulf_mtorf2
+```
+
+```{r}
+##statistical testing 
+set.seed(19743) 
+
+cap_anova <- anova(cap_ord_gulf_mtorf, by="terms", permu=999) # we test the impact of the environmental variable separately. Kindly check for these functions in the help section on the right side.
+
+print(cap_anova)
+```
+
+```{r}
+anova(cap_ord_gulf_mtorf)
+```
+
+```{r}
+set.seed(1)
+
+# Calculate bray curtis distance matrix
+ps_bray <- phyloseq::distance(physeq1, method = "bray")
+
+# make a data frame from the sample_data
+sampledf <- data.frame(sample_data(physeq1))
+```
+
+
+```{r}
+beta_temp <- betadisper(ps_bray, sampledf$temp)
+permutest(beta_temp)
+```
+
+```{r}
+beta_gulf <- betadisper(ps_bray, sampledf$gulf)
+permutest(beta_gulf)
+```
+
+```{r}
+ano_temp = anosim(ps_bray, sampledf$temp)
+ano_temp 
+```
+
+```{r}
+ano_gulf = anosim(ps_bray, sampledf$gulf)
+ano_gulf 
+```
+
+```{r}
+g_mod_temp <- with(sampledf, betadisper(ps_bray, temp))
+g_mod_temp
+plot(g_mod_temp)
+boxplot(g_mod_temp,las=2)
+anova(g_mod_temp)
+
+TukeyHSD(g_mod_temp)
+```
+
+```{r}
+g_mod_g <- with(sampledf, betadisper(ps_bray, gulf))
+g_mod_g
+plot(g_mod_g)
+boxplot(g_mod_g,las=2)
+anova(g_mod_g)
+```
+
+```{r}
+
+##is the above ordination stat significant ? 
+set.seed(19743) 
+asv_css <- t(otu_table(physeq1))
+meta = as(sample_data(physeq1), "data.frame")
+
+perm_css = adonis2(asv_css ~ temp * gulf * mtorf,  meta, method = "bray", sqrt.dist = FALSE, by = "terms") 
+perm_css
+```
+
+```{r}
+
+# Calculate bray curtis distance matrix
+bd1 <- physeq1 %>% 
+  dist_calc("bray") %>% 
+  dist_bdisp(variables = c("temp", "gulf", "mtorf")) %>%
+  bdisp_get()
+
+```
+
+```{r}
+bd1$temp
+#distance from centroid significantly different
+#when 36 is compared to other temps
+```
+
+```{r}
+bd1$gulf
+#not significant
+```
+
+
+```{r}
+bd1$mtorf
+#not signific
+```
+
+```{r}
+###Indicspecies
+
+###Lightbulb !!! Need to specify what level of taxonomy
+
+###From Setiawan et al. 2022
+
+# Function to group asv table by higher order taxonomy
+group_by_taxonomy = function(asv_table, taxonomy, rank){
+  asv_table = as.data.frame(asv_table)
+  taxonomy = as.data.frame(taxonomy)
+  taxonomy$ASV = rownames(taxonomy)
+  asv_table$ASV = rownames(asv_table)
+  asv_table = inner_join(taxonomy,asv_table,by="ASV")
+  asv_table$taxa = apply(asv_table[,1:rank],1,paste,collapse=" ")
+  asv_table = asv_table[,-(1:8)]
+  asv_table = group_by(data.frame(asv_table),taxa)
+  taxa_table = as.data.frame(summarise_all(asv_table,sum))
+  rownames(taxa_table) = taxa_table$taxa
+  return(taxa_table[,-1])
+}
+
+```
+
+```{r}
+# Calculate indicator values, first create 4 df : mtORF 1 Panama, mtORF 3 Panama, mtORF 1 Chiriqui, mtORF 3 Chiriqui
+
+###first by gulf
+
+an_Chr <- subset_samples(physeq1, gulf=="Chiriqui")
+otu_c <- otu_table(an_Chr, taxa_are_rows = FALSE)
+sample_data_c <- sample_data(an_Chr)
+
+head(sample_data_c)
+```
+
+```{r}
+an_Pan <- subset_samples(physeq1, gulf=="Panama")
+otu_p <- otu_table(an_Pan, taxa_are_rows = FALSE)
+sample_data_p <- sample_data(an_Pan)
+
+head(sample_data_p)
+```
+
+```{r}
+#Panama mtORF1
+an_Pan_1 <- subset_samples(an_Pan, mtorf=="1")
+sample_data(an_Pan_1)
+otu_Pan_1 <- otu_table(an_Pan_1, taxa_are_rows = FALSE)
+sample_data_Pan_1 <- sample_data(an_Pan_1)
+```
+
+```{r}
+#Panama mtORF3
+an_Pan_3 <- subset_samples(an_Pan, mtorf=="3")
+sample_data(an_Pan_3)
+otu_Pan_3 <- otu_table(an_Pan_3, taxa_are_rows = FALSE)
+sample_data_Pan_3 <- sample_data(an_Pan_3)
+```
+
+```{r}
+#Chiriqui mtORF1
+an_Chr_1 <- subset_samples(an_Chr, mtorf=="1")
+sample_data(an_Chr_1)
+otu_Chr_1 <- otu_table(an_Chr_1, taxa_are_rows = FALSE)
+sample_data_Chr_1 <- sample_data(an_Chr_1)
+```
+
+```{r}
+#Chiriqui mtORF3
+an_Chr_3 <- subset_samples(an_Chr, mtorf=="3")
+sample_data(an_Chr_3)
+otu_Chr_3 <- otu_table(an_Chr_3, taxa_are_rows = FALSE)
+sample_data_Chr_3 <- sample_data(an_Chr_3)
+```
+```{r}
+###Taxa table up to order for each combination gulf x mtORF
+
+###Chiriqui 3
+
+taxa_table_c3 <- an_Chr_3@otu_table
+
+taxonomy_c3 <- an_Chr_3@tax_table
+
+head(taxonomy_c3)
+
+```
+
+```{r}
+
+taxa_table_defined_c3 = group_by_taxonomy(taxa_table_c3, taxonomy_c3, 3)
+
+taxa_table_defined_c3
+
+```
+
+```{r}
+
+###Format for indicsp, otu as table
+
+asv_pan_1 <- t(otu_table(an_Pan_1))
+
+asv_pan_3 <- t(otu_table(an_Pan_3))
+
+asv_chr_1 <- t(otu_table(an_Chr_1))
+
+asv_chr_3 <- t(otu_table(an_Chr_3))
+```
+
+```{r}
+inv_temp.Pan.1 = multipatt(asv_pan_1, sample_data_Pan_1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Pan.1)
+indisp.sign<-as.data.table(inv_temp.Pan.1$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Pan.1 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Pan.1
+```
+
+```{r}
+inv_temp.Pan.3 = multipatt(asv_pan_3, sample_data_Pan_3$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Pan.3)
+indisp.sign<-as.data.table(inv_temp.Pan.3$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Pan.3 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Pan.3
+```
+
+```{r}
+inv_temp.Chr.1 = multipatt(asv_chr_1, sample_data_Chr_1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Chr.1)
+indisp.sign<-as.data.table(inv_temp.Chr.1$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Chr.1 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Chr.1
+
+write.csv(IndVal_temp.Chr.1, "indicsp_mtORF1_Chiriqui_30Mar2024.csv")
+write.csv(otu_Chr_1, "ASVs_indicsp_mtORF1_Chiriqui_30Mar2024.csv")
+```
+
+```{r}
+inv_temp.Chr.3 = multipatt(asv_chr_3, sample_data_Chr_3$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Chr.3)
+indisp.sign<-as.data.table(inv_temp.Chr.3$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Chr.3 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Chr.3
+```
+
+
+
+
+```{r}
+###Let's specify to compare at the order level of tax
+
+###Panama mtORF1
+taxa_table_an_Pan_1 <- an_Pan_1@otu_table
+
+head(taxa_table_an_Pan_1)
+
+taxonomy_an_Pan_1 <- an_Pan_1@tax_table
+
+head(taxonomy_an_Pan_1)
+
+taxa_table_defined_an_Pan_1 = group_by_taxonomy(taxa_table_an_Pan_1, taxonomy_an_Pan_1, 4)
+
+taxa_table_defined_an_Pan_1
+```
+```{r}
+###Panama mtORF3
+taxa_table_an_Pan_3 <- an_Pan_3@otu_table
+
+head(taxa_table_an_Pan_3)
+
+taxonomy_an_Pan_3 <- an_Pan_3@tax_table
+
+head(taxonomy_an_Pan_3)
+
+taxa_table_defined_an_Pan_3 = group_by_taxonomy(taxa_table_an_Pan_3, taxonomy_an_Pan_3, 4)
+
+taxa_table_defined_an_Pan_3
+```
+
+```{r}
+###Chiriqui mtORF1
+taxa_table_an_Chr_1 <- an_Chr_1@otu_table
+
+head(taxa_table_an_Chr_1)
+
+taxonomy_an_Chr_1 <- an_Chr_1@tax_table
+
+head(taxonomy_an_Chr_1)
+
+taxa_table_defined_an_Chr_1 = group_by_taxonomy(taxa_table_an_Chr_1, taxonomy_an_Chr_1, 4)
+
+taxa_table_defined_an_Chr_1
+```
+
+
+```{r}
+###Chiriqui mtORF3
+taxa_table_an_Chr_3 <- an_Chr_3@otu_table
+
+head(taxa_table_an_Chr_3)
+
+taxonomy_an_Chr_3 <- an_Chr_3@tax_table
+
+head(taxonomy_an_Chr_3)
+
+taxa_table_defined_an_Chr_3 = group_by_taxonomy(taxa_table_an_Chr_3, taxonomy_an_Chr_3, 4)
+
+taxa_table_defined_an_Chr_3
+```
+
+```{r}
+###Okay now let's rerun indicsp on tax level order
+
+###Panama mtORF1
+
+# Calculate indicator values
+indicator_multipatt_Pan_1_order = multipatt(t(taxa_table_defined_an_Pan_1),sample_data_Pan_1$temp,func = "IndVal.g", control = how(nperm=999))
+
+# Look at output
+summary(indicator_multipatt_Pan_1_order)
+
+indisp.sign<-as.data.table(indicator_multipatt_Pan_1_order$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_Pan_1_order = indisp.sign[p.value.bh<=0.05, ]
+IndVal_Pan_1_order
+```
+
+
+```{r}
+###Panama mtORF3
+
+# Calculate indicator values
+indicator_multipatt_Pan_3_order = multipatt(t(taxa_table_defined_an_Pan_3),sample_data_Pan_3$temp,func = "IndVal.g", control = how(nperm=999))
+
+# Look at output
+summary(indicator_multipatt_Pan_3_order)
+
+indisp.sign<-as.data.table(indicator_multipatt_Pan_3_order$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_Pan_3_order = indisp.sign[p.value.bh<=0.05, ]
+IndVal_Pan_3_order
+```
+
+```{r}
+###Chiriqui mtORF1
+
+# Calculate indicator values
+indicator_multipatt_Chr_1_order = multipatt(t(taxa_table_defined_an_Chr_1),sample_data_Chr_1$temp,func = "IndVal.g", control = how(nperm=999))
+
+# Look at output
+summary(indicator_multipatt_Chr_1_order)
+
+indisp.sign<-as.data.table(indicator_multipatt_Chr_1_order$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_Chr_1_order = indisp.sign[p.value.bh<=0.05, ]
+IndVal_Chr_1_order
+```
+
+```{r}
+###Chiriqui mtORF3
+
+# Calculate indicator values
+indicator_multipatt_Chr_3_order = multipatt(t(taxa_table_defined_an_Chr_3),sample_data_Chr_3$temp,func = "IndVal.g", control = how(nperm=999))
+
+# Look at output
+summary(indicator_multipatt_Chr_3_order)
+
+indisp.sign<-as.data.table(indicator_multipatt_Chr_3_order$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_Chr_3_order = indisp.sign[p.value.bh<=0.05, ]
+IndVal_Chr_3_order
+```
+
+
+```{r}
+
+```
+
