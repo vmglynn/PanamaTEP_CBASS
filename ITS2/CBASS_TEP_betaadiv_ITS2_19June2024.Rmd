@@ -1,0 +1,1010 @@
+
+```{r}
+#clear environment
+rm(list = ls())
+```
+
+
+```{r}
+## Set random seed for reproducibility 
+set.seed(1789)
+```
+
+
+```{r}
+#Here are the only necessary packages
+library(tidyverse)
+library(phyloseq)
+library(car)
+library(FSA)
+library(ape)
+library(vegan)
+library(microViz)
+```
+
+
+```{r}
+
+#symportal output absolute abundance data
+Symportal <- read.delim("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\-230_20221201T110004_DBV_20221202T082004.seqs.absolute.abund_only.txt", header = TRUE, check.names = FALSE)
+
+#sample data
+sample_data <- read.csv("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\Sampledata_ITS2_CBASS_18Oct2022_MLG.csv")
+
+#combine both symportal and sample data by sample uid
+its2Seq <- merge(sample_data, Symportal, by=c('sample_uid'))
+
+#remove NAs
+its2Seq2 <- its2Seq[-c(31, 32, 33, 34, 36, 37, 69, 70, 72, 73, 105, 106, 108, 109, 142, 144, 145),]
+row.names(its2Seq2) <- NULL
+
+#separate again
+otu_table1 <- select(its2Seq2, -c(2:9))
+sample_data1 <- select(its2Seq2, c(1:9))
+```
+
+
+```{r}
+# Make a phyloseq object
+
+#This one has NAs filtered out
+otu <- otu_table(otu_table1, taxa_are_rows = FALSE)
+sam <- sample_data(sample_data1)
+ps1 <- phyloseq(otu, sam)
+taxa_names(ps1) <- paste0("asv", seq(ntaxa(ps1))) #this tricks phyloseq into using ASV instead of OTU
+ps1
+
+#Make a dataset of only baseline temperatures
+Baseline2 <- filter(its2Seq2, temp == 28.5, preserve = TRUE)
+otu_table_baseline <- select(Baseline2, -c(2:9))
+sample_data_baseline <- select(Baseline2, c(1:9))
+
+#Make a phyloseq object at baseline 
+otu_baseline <- otu_table(otu_table_baseline, taxa_are_rows = FALSE)
+sam_baseline <- sample_data(sample_data_baseline)
+ps_baseline <- phyloseq(otu_baseline, sam_baseline)
+#taxa_names(ps_baseline) <- paste0("asv", seq(ntaxa(ps_baseline))) #this tricks phyloseq into using ASV instead of OTU
+ps_baseline
+```
+
+
+```{r}
+#### MNDS ####
+```
+
+
+```{r}
+#Use pohyloseq function for ordination
+#NMDS
+set.seed(1789)
+MDSbray <- ordinate(ps1, "NMDS", "bray")
+
+set.seed(1789)
+MDSbray_baseline <- ordinate(ps_baseline, "NMDS", "bray")
+```
+
+
+```{r}
+#Temperature only
+NMDSplot_temp <- plot_ordination(ps1, MDSbray, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "NMDS ordination by temperature", color = "Temperature")
+
+NMDSplot_temp
+```
+
+
+```{r}
+#Temperature and gulf
+set.seed(1789)
+NMDSplot_temp_n_gulf <- plot_ordination(ps1, MDSbray, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf) + 
+  labs(title = "NMDS ordination by temperature and gulf", color = "Temperature")
+
+NMDSplot_temp_n_gulf
+```
+
+
+```{r}
+#Temperature and mtORF type
+set.seed(1789)
+NMDSplot_temp_n_mtorf <- plot_ordination(ps1, MDSbray, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~mtorf) + 
+  labs(title = "NMDS ordination by temperature and mtORF type", color = "Temperature")
+
+NMDSplot_temp_n_mtorf
+```
+
+
+```{r}
+#Temperature, gulf and mtORF type
+set.seed(1789)
+NMDSplot_temp_n_gulf_n_mtorf <- plot_ordination(ps1, MDSbray, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf ~ mtorf) + 
+  labs(title = "NMDS ordination by temperature and gulf", color = "Temperature")
+
+NMDSplot_temp_n_gulf_n_mtorf
+```
+
+
+```{r}
+#Gulf only at Baseline
+NMDSplot_gulf_baseline <- plot_ordination(ps_baseline, MDSbray_baseline, type="samples", color="gulf") +
+  scale_color_manual(values = c("magenta", "deepskyblue")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "NMDS ordination by Gulf at baseline temperature", color = "Gulf")
+
+NMDSplot_gulf_baseline
+```
+
+
+```{r}
+#Gulf only
+NMDSplot_gulf <- plot_ordination(ps1, MDSbray, type="samples", color="gulf") +
+  scale_color_manual(values = c("magenta", "deepskyblue")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "NMDS ordination by Gulf", color = "Gulf")
+
+NMDSplot_gulf
+```
+
+
+```{r}
+#mtORF only at Baseline
+NMDSplot_mtorf_baseline <- plot_ordination(ps_baseline, MDSbray_baseline, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "NMDS ordination by mtORF type at baseline temperature", color = "mtORF type")
+
+NMDSplot_mtorf_baseline
+```
+
+
+
+```{r}
+#mtORF only
+NMDSplot_mtorf <- plot_ordination(ps1, MDSbray, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "NMDS ordination by mtORF type", color = "mtORF type")
+
+NMDSplot_mtorf
+```
+
+
+```{r}
+#mtORF and gulf at Baseline
+set.seed(1789)
+NMDSplot_mtorf_n_gulf_Baseline <- plot_ordination(ps_baseline, MDSbray_baseline, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf) + 
+  labs(title = "NMDS ordination by mtORF type and gulf at baseline temperature", color = "mtORF Type")
+
+NMDSplot_mtorf_n_gulf_Baseline
+```
+
+
+```{r}
+#mtORF and Gulf
+set.seed(1789)
+NMDSplot_mtorf_n_gulf <- plot_ordination(ps1, MDSbray, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf) + 
+  labs(title = "NMDS ordination by mtORF type and gulf", color = "mtORF Type")
+
+NMDSplot_mtorf_n_gulf
+```
+
+
+```{r}
+#Reef site only at Baseline
+set.seed(1789)
+NMDSplot_reef_baseline <- plot_ordination(ps_baseline, MDSbray_baseline, type="samples", color="reef") +
+  #scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + #facet_wrap(~gulf) + 
+  labs(title = "NMDS ordination by mtORF type and reef site at baseline", color = "Reef site")
+
+NMDSplot_reef_baseline
+```
+
+
+```{r}
+#Reef site only
+set.seed(1789)
+NMDSplot_reef <- plot_ordination(ps1, MDSbray, type="samples", color="reef") +
+  #scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + #facet_wrap(~gulf) + 
+  labs(title = "NMDS ordination by mtORF type and reef site", color = "Reef site")
+
+NMDSplot_reef
+```
+
+
+```{r}
+#### PCoA ####  ** we didn't use
+```
+
+
+```{r}
+#Use pohyloseq function for ordination
+#PCOA
+#set.seed(1789)
+#PCoA <- ordinate(ps, method = "PCoA")
+```
+
+
+```{r}
+#### CAP ####
+```
+
+
+```{r}
+# Perform CAP ordination
+set.seed(1789)
+#*= interactive effect, each genotype will experience temp differently
+#+= additive effect, no interaction
+#old formula = ~reef/gulf + temp + geno
+
+ordcap <- ordinate(ps1, method = "CAP", distance = "bray", formula = ~ temp * gulf) 
+
+scree.cap <- plot_scree(ordcap, "Scree Plot for MCs in Constrained Analysis of Principal Coordinates (CAPSCALE)")
+print(scree.cap)
+```
+
+
+```{r}
+#Temperature only
+set.seed(1789)
+CAPplot_temp <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "CAP ordination by temperature", color = "Temperature")
+
+CAPplot_temp
+```
+
+
+```{r}
+#Temperature and gulf
+set.seed(1789)
+CAPplot_temp_n_gulf <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf) + 
+  labs(title = "CAP ordination by temperature and gulf", color = "Temperature")
+
+CAPplot_temp_n_gulf
+```
+
+
+```{r}
+#Temperature and mtORF type
+set.seed(1789)
+CAPplot_temp_n_mtorf <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~mtorf) + 
+  labs(title = "CAP ordination by temperature and mtORF type", color = "Temperature")
+
+CAPplot_temp_n_mtorf
+```
+
+
+```{r}
+#Temperature, gulf and mtORF type
+set.seed(1789)
+CAPplot_temp_n_gulf_mtorf <- plot_ordination(ps1, ordcap, type="samples", color="temp", shape = "Clade") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf~mtorf) + 
+  labs(title = "CAP ordination by temperature, gulf and mtorf", color = "Temperature")
+
+CAPplot_temp_n_gulf_mtorf
+
+CAPplot_temp_n_gulf_mtorf_noelip <- plot_ordination(ps1, ordcap, type="samples", color="temp", shape = "Clade") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() + facet_wrap(~gulf~mtorf) + 
+  labs(title = "CAP ordination by temperature, gulf and mtorf", color = "Temperature")
+
+CAPplot_temp_n_gulf_mtorf_noelip
+```
+
+
+```{r}
+#Temperature and reef site
+set.seed(1789)
+CAPplot_temp_n_reef <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~reef) + 
+  labs(title = "CAP ordination by temperature and reef site", color = "Temperature")
+
+CAPplot_temp_n_reef
+```
+
+
+
+
+```{r}
+#Gulf only
+set.seed(1789)
+CAPplot_gulf <- plot_ordination(ps1, ordcap, type="samples", color="gulf") +
+  scale_color_manual(values = c("magenta", "deepskyblue")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "CAP ordination by Gulf", color = "Gulf")
+
+CAPplot_gulf
+```
+
+
+
+```{r}
+#Gulf and mtORF type 
+CAPplot_gulf_n_mtorf <- plot_ordination(ps1, ordcap, type="samples", color="gulf") +
+  scale_color_manual(values = c("magenta", "deepskyblue")) +
+  theme_bw() +
+  stat_ellipse() +  facet_wrap(~mtorf) + 
+  labs(title = "CAP ordination by Gulf and mtORF type", color = "Gulf")
+
+CAPplot_gulf_n_mtorf
+```
+
+
+
+
+```{r}
+#mtORF type only
+CAPplot_mtorf <- plot_ordination(ps1, ordcap, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "CAP ordination by mtORF type", color = "mtORF type")
+
+CAPplot_mtorf
+```
+
+
+
+```{r}
+#mtORF type and gulf
+set.seed(1789)
+CAPplot_mtorf_n_gulf <- plot_ordination(ps1, ordcap, type="samples", color="mtorf") +
+  scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + facet_wrap(~gulf) + 
+  labs(title = "CAP ordination by mtORF type and gulf", color = "mtORF Type")
+
+CAPplot_mtorf_n_gulf
+```
+
+
+
+
+
+```{r}
+#Reef site only
+CAPplot_reef<- plot_ordination(ps1, ordcap, type="samples", color="reef") +
+  #scale_color_manual(values = c("darkorchid4", "gold")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "CAP ordination by reef site", color = "Reef site")
+
+CAPplot_reef
+```
+
+
+```{r}
+#Now Add explanatory arrows!
+set.seed(1789)
+
+# Now add the environmental variables as arrows 
+arrowmat <- vegan::scores(ordcap, display = "bp")
+
+# Add labels, make a data.frame 
+arrowdf <- data.frame(labels = rownames(arrowmat), arrowmat)
+
+# Define the arrow aesthetic mapping 
+arrow_map <- aes(xend = CAP1, 
+                 yend = CAP2, 
+                 x = 0, y = 0, 
+                 shape = NULL, 
+                 color = NULL, 
+                 label = labels) 
+
+label_map <- aes(x = 1.3 * CAP1, y = 1.3 * CAP2, 
+                 shape = NULL, 
+                 color = NULL,
+                 label = labels)  
+
+arrowhead = arrow(length = unit(0.02, "npc"))
+```
+
+
+```{r}
+##now plot the arrow on Temperature only CAP plot
+cap_plot_arrow <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  stat_ellipse() + 
+  geom_segment(mapping = arrow_map, size = .7, data = arrowdf, color = "black", arrow = arrowhead) + 
+  geom_text(mapping = label_map, size = 4, data = arrowdf, show.legend = TRUE) + 
+  #facet_wrap(~gulf) + 
+  labs(title = "CAP ordination by temperature and mtORF type", color = "Temperature") + 
+  theme_bw()
+cap_plot_arrow
+
+```
+
+```{r}
+# Perform CAP ordination
+set.seed(1789)
+#*= interactive effect, each genotype will experience temp differently
+#+= additive effect, no interaction
+#old formula = ~reef/gulf + temp + geno
+
+ordcap2 <- ordinate(ps1, method = "CAP", distance = "bray", formula = ~ temp * gulf / mtorf) 
+
+scree.cap <- plot_scree(ordcap2, "Scree Plot for MCs in Constrained Analysis of Principal Coordinates (CAPSCALE)")
+print(scree.cap)
+
+
+```
+```{r}
+set.seed(1789)
+CAPplot_mtorf_n_gulf <- plot_ordination(ps1, ordcap2, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4"))  +
+  theme_bw() + stat_ellipse() +
+   facet_wrap(~gulf ~ mtorf) + 
+  labs(title = "CAP ordination by mtORF type and gulf", color = "mtORF Type")
+
+CAPplot_mtorf_n_gulf
+
+
+CAPplot_mtorf_n_gulf_2 <- plot_ordination(ps1, ordcap2, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4"))  +
+  theme_bw() +
+   facet_wrap(~gulf ~ mtorf) + 
+  labs(title = "CAP ordination by mtORF type and gulf", color = "Temperature")
+
+CAPplot_mtorf_n_gulf_2
+```
+
+
+```{r}
+#Temperature only
+set.seed(1789)
+CAPplot_temp <- plot_ordination(ps1, ordcap, type="samples", color="temp") +
+  scale_color_manual(values = c("dodgerblue2", "gold", "darkorange", "darkorange4")) +
+  theme_bw() +
+  stat_ellipse() + 
+  labs(title = "CAP ordination by temperature", color = "Temperature")
+
+CAPplot_temp
+```
+
+```{r}
+
+##statistical testing 
+set.seed(19743) 
+cap_anova <- anova(ordcap, by="terms", permu=999) # we test the impact of the environmental variable separately. Kindly check for these functions in the help section on the right side.
+
+print(cap_anova)
+```
+
+```{r}
+anova(ordcap)
+```
+
+```{r}
+##statistical testing for mtORF included as nested effect
+set.seed(19743) 
+cap_anova_mtorf <- anova(ordcap2, by="terms", permu=999) # we test the impact of the environmental variable separately. Kindly check for these functions in the help section on the right side.
+
+print(cap_anova_mtorf)
+```
+
+```{r}
+set.seed(1)
+
+# Calculate bray curtis distance matrix
+ps_bray <- phyloseq::distance(ps1, method = "bray")
+
+# make a data frame from the sample_data
+sampledf <- data.frame(sample_data(ps1))
+```
+
+
+```{r}
+beta_temp <- betadisper(ps_bray, sampledf$temp)
+permutest(beta_temp)
+```
+
+```{r}
+beta_gulf <- betadisper(ps_bray, sampledf$gulf)
+permutest(beta_gulf)
+```
+```{r}
+beta_orf <- betadisper(ps_bray, sampledf$mtorf)
+
+permutest(beta_orf)
+```
+
+```{r}
+ano_temp = anosim(ps_bray, sampledf$temp)
+ano_temp 
+```
+
+```{r}
+ano_gulf = anosim(ps_bray, sampledf$gulf)
+ano_gulf 
+```
+```{r}
+ano_orf = anosim(ps_bray, sampledf$mtorf)
+ano_orf
+```
+
+```{r}
+g_mod_temp <- with(sampledf, betadisper(ps_bray, temp))
+g_mod_temp
+plot(g_mod_temp)
+boxplot(g_mod_temp,las=2)
+anova(g_mod_temp)
+```
+
+```{r}
+g_mod_orf <- with(sampledf, betadisper(ps_bray, mtorf))
+g_mod_orf
+plot(g_mod_orf)
+boxplot(g_mod_orf,las=2)
+anova(g_mod_orf)
+```
+
+```{r}
+g_mod_g <- with(sampledf, betadisper(ps_bray, gulf))
+g_mod_g
+plot(g_mod_g)
+boxplot(g_mod_g,las=2)
+anova(g_mod_g)
+```
+
+```{r}
+
+##is the above ordination stat significant ? 
+set.seed(19743) 
+asv_css <- t(otu_table(ps1))
+meta = as(sample_data(ps1), "data.frame")
+
+meta
+```
+
+```{r}
+perm_css = adonis2(otu_table1 ~ temp * gulf * mtorf, sample_data1, method = "bray", sqrt.dist = FALSE, by = "terms") 
+perm_css
+```
+
+```{r}
+
+library(pairwiseAdonis)
+
+Pairwise_temp_gulf_orf <- pairwise.adonis2(otu_table1 ~ temp*gulf*mtorf, data = sample_data1, sim.method = "bray",  p.adjust.m = "BH",
+  permutations = 999)
+
+Pairwise_temp_gulf_orf
+```
+
+```{r}
+Pairwise_temp <- pairwise.adonis2(otu_table1 ~ temp, data = sample_data1, sim.method = "bray",  p.adjust.m = "BH",
+  permutations = 999)
+
+Pairwise_temp
+```
+
+```{r}
+Pairwise_gulf <- pairwise.adonis2(otu_table1 ~ gulf, data = sample_data1, sim.method = "bray",  p.adjust.m = "BH",
+  permutations = 999)
+
+Pairwise_gulf
+```
+
+```{r}
+
+Pairwise_orf <- pairwise.adonis2(otu_table1 ~ mtorf, data = sample_data1, sim.method = "bray",  p.adjust.m = "BH",
+  permutations = 999)
+
+Pairwise_orf
+
+```
+
+
+
+```{r}
+##Based on pairwise adonis above, we will subset object so only 33 v 36, and 28.5 vs 36 remains
+
+
+### 28.5C vs 36C
+
+####asv_css <- t(otu_table(ps13))
+### meta = as(sample_data(ps13), "data.frame")
+
+ps_28.5_36 <- subset_samples(ps1, temp==c("28.5", "36"))
+```
+
+```{r}
+asv_css <- t(otu_table(ps1))
+             
+meta <- as(sample_data(ps1), "data.frame")
+```
+
+```{r}
+#Beta dispersal
+set.seed(1789)
+
+# Calculate bray curtis distance matrix
+ps_bray <- phyloseq::distance(ps1, method = "bray")
+
+```
+
+```{r}
+##by temp
+beta_temp <- betadisper(ps_bray, sample_data1$temp)
+permutest(beta_temp)
+#significant
+```
+
+
+```{r}
+##by gulf
+beta_gulf <- betadisper(ps_bray, sample_data1$gulf)
+permutest(beta_gulf)
+#not significant
+
+```
+```{r}
+##by reef
+beta_reef <- betadisper(ps_bray, sample_data1$reef)
+permutest(beta_reef)
+#significant
+
+```
+
+
+```{r}
+##by mtorf
+beta_mtorf <- betadisper(ps_bray, sample_data1$mtorf)
+permutest(beta_mtorf)
+#not significant
+
+```
+
+
+```{r}
+##beta dispersal 2
+```
+
+```{r}
+# Calculate bray curtis distance matrix
+bd1 <- ps1 %>% 
+  dist_calc("bray") %>% 
+  dist_bdisp(variables = c("temp", "reef", "gulf", "mtorf")) %>%
+  bdisp_get()
+
+bd_baseline <- ps_baseline %>% 
+  dist_calc("bray") %>% 
+  dist_bdisp(variables = c("reef", "gulf", "mtorf")) %>%
+  bdisp_get()
+```
+
+```{r}
+bd1$temp
+#distance from centroid significantly different
+#when 36 is compared to other temps
+
+### Interpretation
+##The average distance from observations to the cluster centroid is a measure of the variability of the observations within each cluster. In general, a cluster that has a smaller average distance is more compact than a cluster that has a larger average distance. Clusters that have higher values exhibit greater variability of the observations within the cluster.
+```
+
+
+```{r}
+bd1$reef
+##distance from centroid significantly different
+#When SAB_A is compared to other reefs
+```
+```{r}
+bd1$gulf
+#not significant
+```
+
+
+```{r}
+bd1$mtorf
+#not significant
+```
+
+
+```{r}
+# at baseline
+```
+
+
+```{r}
+bd_baseline$reef
+#distance from centroid significantly different
+#When comparing SAB_A and AFU_A
+```
+
+
+```{r}
+bd_baseline$gulf
+#not significant
+```
+
+
+```{r}
+bd_baseline$mtorf
+#not significant
+```
+
+```{r}
+library(DESeq2)
+
+deseq = phyloseq_to_deseq2(ps1, design= ~ gulf + temp)
+
+deseq$temp = relevel(deseq$temp, ref="28.5")  
+```
+```{r}
+deseq = estimateSizeFactors(deseq)
+deseq = estimateDispersions(deseq, fitType='local')
+```
+
+```{r}
+deseq = DESeq(deseq, fitType='local') 
+```
+
+```{r}
+res <- results(deseq)
+
+head(results(deseq, tidy=TRUE))
+
+```
+
+```{r}
+summary(res)
+```
+
+```{r}
+res <- res[order(res$padj),]
+head(res)
+```
+
+```{r}
+set.seed(123)
+### run separately per gulf, so subset first
+an_Pan <- subset_samples(ps1, gulf=="Panama")
+sample_data(an_Pan)
+
+an_Chr <- subset_samples(ps1, gulf=="Chiriqui")
+sample_data(an_Chr)
+```
+```{r}
+library(data.table)
+library(indicspecies)
+
+inv_gulf = multipatt(otu_table1, sample_data1$gulf, func = "IndVal.g", control = how(nperm=999))
+summary(inv_gulf)
+indisp.sign<-as.data.table(inv_gulf$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_gulf = indisp.sign[p.value.bh<=0.05, ]
+IndVal_gulf
+```
+
+```{r}
+inv_temp = multipatt(otu_table1, sample_data1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp)
+indisp.sign<-as.data.table(inv_temp$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp
+```
+```{r}
+### run separately per gulf, so subset first
+an_Pan <- subset_samples(ps1, gulf=="Panama")
+##sample_data(an_Pan)
+
+###
+
+otu_table1
+
+```
+
+```{r}
+otu_p <- otu_table(an_Pan, taxa_are_rows = FALSE)
+head(otu_p)
+
+```
+
+```{r}
+sample_data_p <- sample_data(an_Pan)
+head(sample_data_p) 
+```
+
+```{r}
+inv_temp.p = multipatt(otu_p, sample_data_p$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.p)
+indisp.sign<-as.data.table(inv_temp.p$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.p = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.p
+```
+
+```{r}
+an_Chr <- subset_samples(ps1, gulf=="Chiriqui")
+### sample_data(an_Chr)
+otu_c <- otu_table(an_Chr, taxa_are_rows = FALSE)
+sample_data_c <- sample_data(an_Chr)
+```
+
+
+```{r}
+
+inv_temp.c = multipatt(otu_c, sample_data_c$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.c)
+indisp.sign<-as.data.table(inv_temp.c$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.c = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.c
+```
+
+```{r}
+###Let's do per mtORF
+
+an_mtorf1 <- subset_samples(ps1, mtorf=="1")
+### sample_data(an_Chr)
+otu_mtorf1 <- otu_table(an_mtorf1, taxa_are_rows = FALSE)
+sample_data_mtorf1 <- sample_data(an_mtorf1)
+
+an_mtorf3 <- subset_samples(ps1, mtorf=="3")
+### sample_data(an_Chr)
+otu_mtorf3 <- otu_table(an_mtorf3, taxa_are_rows = FALSE)
+sample_data_mtorf3 <- sample_data(an_mtorf3)
+```
+
+
+```{r}
+inv_temp.mtorf1 = multipatt(otu_mtorf1, sample_data_mtorf1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.mtorf1)
+indisp.sign<-as.data.table(inv_temp.mtorf1$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.mtorf1 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.mtorf1
+```
+
+```{r}
+inv_temp.mtorf3 = multipatt(otu_mtorf3, sample_data_mtorf3$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.mtorf3)
+indisp.sign<-as.data.table(inv_temp.mtorf3$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.mtorf3 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.mtorf3
+```
+
+```{r}
+#Panama mtORF1
+an_Pan_1 <- subset_samples(an_Pan, mtorf=="1")
+sample_data(an_Pan_1)
+otu_Pan_1 <- otu_table(an_Pan_1, taxa_are_rows = FALSE)
+sample_data_Pan_1 <- sample_data(an_Pan_1)
+```
+
+```{r}
+#Panama mtORF3
+an_Pan_3 <- subset_samples(an_Pan, mtorf=="3")
+sample_data(an_Pan_3)
+otu_Pan_3 <- otu_table(an_Pan_3, taxa_are_rows = FALSE)
+sample_data_Pan_3 <- sample_data(an_Pan_3)
+```
+
+```{r}
+#Chiriqui mtORF1
+an_Chr_1 <- subset_samples(an_Chr, mtorf=="1")
+sample_data(an_Chr_1)
+otu_Chr_1 <- otu_table(an_Chr_1, taxa_are_rows = FALSE)
+sample_data_Chr_1 <- sample_data(an_Chr_1)
+```
+
+```{r}
+#Chiriqui mtORF3
+an_Chr_3 <- subset_samples(an_Chr, mtorf=="3")
+sample_data(an_Chr_3)
+otu_Chr_3 <- otu_table(an_Chr_3, taxa_are_rows = FALSE)
+sample_data_Chr_3 <- sample_data(an_Chr_3)
+```
+```{r}
+inv_temp.Pan.1 = multipatt(otu_Pan_1, sample_data_Pan_1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Pan.1)
+indisp.sign<-as.data.table(inv_temp.Pan.1$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Pan.1 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Pan.1
+```
+
+```{r}
+inv_temp.Pan.3 = multipatt(otu_Pan_3, sample_data_Pan_3$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Pan.3)
+indisp.sign<-as.data.table(inv_temp.Pan.3$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Pan.3 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Pan.3
+```
+
+```{r}
+inv_temp.Chr.1 = multipatt(otu_Chr_1, sample_data_Chr_1$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Chr.1)
+indisp.sign<-as.data.table(inv_temp.Chr.1$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Chr.1 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Chr.1
+
+write.csv(IndVal_temp.Chr.1, "indicsp_mtORF1_Chiriqui_30Mar2024.csv")
+write.csv(otu_Chr_1, "ASVs_indicsp_mtORF1_Chiriqui_30Mar2024.csv")
+```
+
+```{r}
+inv_temp.Chr.3 = multipatt(otu_Chr_3, sample_data_Chr_3$temp, func = "IndVal.g", control = how(nperm=999))
+summary(inv_temp.Chr.3)
+indisp.sign<-as.data.table(inv_temp.Chr.3$sign, keep.rownames=TRUE)
+#add adjusted p-value
+indisp.sign[ ,p.value.bh:=p.adjust(p.value, method="BH")]
+#now can select only the indicators with adjusted significant p-values
+
+IndVal_temp.Chr.3 = indisp.sign[p.value.bh<=0.05, ]
+IndVal_temp.Chr.3
+```
+
+```{r}
+
+```
+

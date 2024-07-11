@@ -1,0 +1,538 @@
+
+
+```{r}
+#clear environment
+rm(list = ls())
+```
+
+
+```{r}
+## Set random seed for reproducibility 
+set.seed(1789)
+```
+
+
+```{r}
+#Here are the only necessary packages
+library(tidyverse)
+library(phyloseq)
+library(car)
+library(FSA)
+library(RColorBrewer)
+library(ggsignif)
+library(stats)
+library(nlme)
+```
+
+
+```{r}
+#symportal output absolute abundance data
+Symportal <- read.delim("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\-230_20221201T110004_DBV_20221202T082004.seqs.absolute.abund_only.txt", header = TRUE, check.names = FALSE)
+
+#sample data
+sample_data <- read.csv("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\Sampledata_ITS2_CBASS_18Oct2022_MLG.csv")
+
+#combine both symportal and sample data by sample uid
+its2Seq <- merge(sample_data, Symportal, by=c('sample_uid'))
+
+#remove NAs
+its2Seq2 <- its2Seq[-c(31, 32, 33, 34, 36, 37, 69, 70, 72, 73, 105, 106, 108, 109, 142, 144, 145),]
+row.names(its2Seq2) <- NULL
+```
+```{r}
+its2Seq2 
+```
+
+
+```{r}
+## filter out sample_uid, sample_name, col, geno, and type (keep reef, gulf, mtorf, and temp)
+its2Seq3 <- select(its2Seq2, -c(1:3,8,9)) 
+
+## filter out sample_uid, sample_name, geno, and type (keep reef, gulf, mtorf, and temp)
+its2Seq3_2 <- select(its2Seq2, -c(1:2,8,9)) 
+
+its2Seq3_2
+```
+
+```{r}
+
+#create ITSType and abundance categories
+its2Seq4 <- pivot_longer(its2Seq3_2, cols = -c(1,2,3,4,5), names_to = "ITSType", values_to = "Abundance") 
+
+its2Seq4
+
+sort(unique(its2Seq4$ITSType))
+```
+
+```{r}
+#remove ITS Types with abundances under a hundred count
+its2Seq5 <- filter(its2Seq4, Abundance > 100)
+
+its2Seq5
+
+sort(unique(its2Seq5$ITSType))
+```
+
+
+```{r}
+#create a Clade column
+its2Seq6 <- mutate(its2Seq5, Clade = str_extract(ITSType, "C|D"))
+
+its2Seq6
+
+```
+
+
+```{r}
+#create strain column
+its2Seq7 <- mutate(its2Seq6, Strain = str_extract(ITSType, "C115|C1|C3|C42|D1|D2|D4|D6|D|C"))
+
+#rename unknown strains
+its2Seq7 <- mutate(its2Seq7, Strain = case_when(Strain == "C" ~ "unknown_C",Strain == "D" ~ "unknown_D",TRUE ~ Strain))
+
+its2Seq7
+```
+```{r}
+sort(unique(its2Seq7$Strain))
+```
+
+
+```{r}
+#Make a data set that only inclused baseline temperature
+Baseline<- filter(its2Seq7, temp == 28.5, preserve = TRUE)
+summary(Baseline)
+
+```
+
+
+```{r}
+#How many mtorf type 1 and 3 are in each gulf?
+countmtorfgulf <- aggregate(mtorf ~ gulf, data = Baseline, function(x) table(x)) %>% mutate(percent1 = (100*mtorf[,"1"])/(mtorf[,"1"]+mtorf[,"3"])) %>% mutate(percent3 = (100*mtorf[,"3"])/(mtorf[,"1"]+mtorf[,"3"]))
+
+#How many Clade C and D are in each gulf?
+countCladegulf <- aggregate(Clade ~ gulf, data = Baseline, function(x) table(x)) %>% mutate(percentC = (100*Clade[,"C"])/(Clade[,"C"]+Clade[,"D"])) %>% mutate(percentD = (100*Clade[,"D"])/(Clade[,"C"]+Clade[,"D"]))
+
+#How many Strain C and D are in each gulf?
+countStraingulf <- aggregate(Baseline$Strain, by = list(Baseline$gulf), function(x) table(x))
+
+#How many Clade C and D are in each mtorf type?
+countClademtorf <- aggregate(Clade ~ mtorf, data = Baseline, function(x) table(x)) %>% mutate(percentC = (100*Clade[,"C"])/(Clade[,"C"]+Clade[,"D"])) %>% mutate(percentD = (100*Clade[,"D"])/(Clade[,"C"]+Clade[,"D"]))
+
+#How many Strain C and D are in each mtorf type?
+countStrainmtorf <- aggregate(Baseline$Strain, by = list(Baseline$mtorf), function(x) table(x))
+```
+
+
+```{r}
+#Make the color palette function. This will allow us to visualize Cladocopium and Durisdinium strains as different color gradients
+
+ColourPalleteMulti <- function(df, group, subgroup){
+
+  # Find how many colour categories to create and the number of colours in each
+  categories <- aggregate(as.formula(paste(subgroup, group, sep="~" )), df, function(x) length(unique(x)))
+  category.start <- (scales::hue_pal(h.start = 90)(nrow(categories))) # Set the top of the colour pallete
+  category.end  <- (scales::hue_pal(h.start = 200)(nrow(categories))) # set the bottom
+
+  # Build Colour pallette
+  colours <- unlist(lapply(1:nrow(categories),
+                          function(i){
+                            colorRampPalette(colors = c(category.start[i], category.end[i]))(categories[i,2])}))
+  return(colours)}
+
+  colours
+```
+
+
+```{r}
+#create baseline color palette
+colours1 <-ColourPalleteMulti(Baseline, "Clade", "Strain")
+#specify order of bars (from top to bottom)
+Baseline$Strain <- factor(Baseline$Strain, levels=c('C1', 'C3', 'C42', 'C115', 'unknown_C', 'D1', 'D2', 'D4', 'D6', 'unknown_D'))
+
+#create all temperatures color palette
+colours2 <-ColourPalleteMulti(its2Seq7, "Clade", "Strain")
+#specify order of bars (from top to bottom)
+its2Seq7$Strain <- factor(its2Seq7$Strain, levels=c('C1', 'C3', 'C42', 'C115', 'unknown_C', 'D1', 'D2', 'D4', 'D6', 'unknown_D'))
+
+###"C115|C1|C3|C42|D1|D2|D4|D6|D|C"
+```
+
+
+```{r}
+####ITS2 strain Relative Abundance Stacked Bar Plots at Baseline####
+```
+
+
+```{r}
+##ITS strain across Gulfs at baseline temperature - barplot
+
+Baseline_Strain_by_gulf <-
+  ggplot(Baseline, aes(x = gulf, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values=colours1) +
+  labs(title = "Baseline Relative Abundance of ITS strain across gulfs", x= "gulf", y = "Abundance", fill = "ITS strain") +
+  theme_bw()
+  
+Baseline_Strain_by_gulf
+```
+
+
+```{r}
+##ITS strain across mtorfs at baseline temperature - barplot
+Baseline_Strain_by_mtorf <-
+  ggplot(Baseline, aes(x = mtorf, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values=colours1) +
+  labs(title = "Baseline Relative Abundance of ITS strain across mtORF type", x= "mtORF Type", y = "Abundance", fill = "ITS strain") +
+  theme_bw()
+  
+Baseline_Strain_by_mtorf 
+```
+
+
+```{r}
+##ITS strain across Gulfs and mtorfs at baseline temperature - barplot
+Baseline_Strain_by_mtorf_n_gulf <-
+  ggplot(Baseline, aes(x = mtorf, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  scale_fill_manual(values=colours1) +
+  facet_wrap(~ gulf, scales = "free", ncol = 5) +
+  labs(title = "Baseline Relative Abundance of ITS strain across mtORF type and Gulf", x= "mtORF Type", y = "Abundance", fill = "ITS strain") +
+  theme_bw()
+  
+Baseline_Strain_by_mtorf_n_gulf
+```
+
+```{r}
+####ITS2 strain Abundance Stacked Bar Plots at all temperatures####
+```
+
+
+```{r}
+##ITS strain across temperatures and Gulfs - barplot
+ITSstrain_Barplot_temp_n_gulf_stacked <-
+  ggplot(its2Seq7, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ gulf, scales = "free", ncol = 5) +
+  scale_fill_manual(values=colours2) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain across temperature treatments", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITSstrain_Barplot_temp_n_gulf_stacked
+
+ITSstrain_Barplot_temp_n_gulf_stacked + facet_wrap (gulf ~ mtorf) 
+```
+
+```{r}
+
+```
+
+```{r}
+##ITS strain across temperatures - barplot
+
+ITSstrain_Barplot_temp_stacked <-
+  ggplot(its2Seq7, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  labs(title = "Relative Abundance of ITS strain across temperature treatments", x= "Temperature treatment (C)", y   = "Abundance", fill = "ITS type") + 
+  scale_fill_manual(values=colours2) +
+  theme_bw()
+  
+ITSstrain_Barplot_temp_stacked
+```
+
+
+```{r}
+##ITS strain across temperatures and mtorf type - barplot
+
+ITSstrain_Barplot_temp_n_mtorf_stacked <-
+  ggplot(its2Seq7, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ mtorf, scales = "free", ncol = 5) +
+   scale_fill_manual(values=colours2) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain across temperature and mtORF type", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITSstrain_Barplot_temp_n_mtorf_stacked
+```
+
+```{r}
+###Let's see per colony
+
+## filter out sample_uid, sample_name,  geno, and type (keep colony, reef, gulf, mtorf, and temp)
+
+its_col1 <- dplyr::select(its2Seq2, -c(1:2,8,9)) 
+its_col1
+```
+
+```{r}
+
+#create ITSType and abundance categories
+its_col2 <- pivot_longer(its_col1, cols = -c(1,2,3,4,5), names_to = "ITSType", values_to = "Abundance") 
+
+its_col2
+```
+
+```{r}
+#remove ITS Types with abundances under a hundred count
+its_col3 <- filter(its_col2, Abundance > 100)
+
+its_col3
+```
+
+
+```{r}
+#create a Clade column
+its_col4 <- mutate(its_col3, Clade = str_extract(ITSType, "C|D"))
+its_col4
+```
+
+```{r}
+#create strain column
+its_col5 <- mutate(its_col4, Strain = str_extract(ITSType, "C115|C1|C3|C42|D1|D2|D4|D6|D|C"))
+
+its_col5
+
+##"C115|C1|C3|C42|D1|D2|D4|D6|D|C"
+```
+
+```{r}
+#rename unknown strains
+its_col6 <- mutate(its_col5, Strain = case_when(Strain == "C" ~ "unknown_C",Strain == "D" ~ "unknown_D",TRUE ~ Strain))
+
+its_col6
+```
+
+```{r}
+##Relevel Strains
+its_col6$Strain <- factor(its_col6$Strain, levels=c('C1', 'C3', 'C42', 'C115', 'unknown_C', 'D1', 'D2', 'D4', 'D6', 'unknown_D'))
+```
+
+```{r}
+##Subset by mtORF for plotting
+
+mtORF1_its_col6 <- filter(its_col6, mtorf == "1")
+
+mtORF1_its_col6 
+
+mtORF1_its_col6_C <- filter(mtORF1_its_col6 , gulf == "Chiriqui")
+
+mtORF1_its_col6_C
+
+mtORF1_its_col6_P <- filter(mtORF1_its_col6, gulf == "Panama")
+
+mtORF1_its_col6_P
+
+```
+
+```{r}
+mtORF3_its_col6 <- filter(its_col6, mtorf == "3")
+
+mtORF3_its_col6
+
+mtORF3_its_col6_C <- filter(mtORF3_its_col6, gulf == "Chiriqui")
+
+mtORF3_its_col6_C
+
+mtORF3_its_col6_P <- filter(mtORF3_its_col6, gulf == "Panama")
+
+mtORF3_its_col6_P
+
+```
+
+```{r}
+ITS_mtORF1_barplot_percolony_stacked <-
+  ggplot(mtORF1_its_col6, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#3EB371", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C", "#E88526")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 1 colonies", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF1_barplot_percolony_stacked
+```
+```{r}
+ITS_mtORF1_P_barplot_percolony_stacked <-
+  ggplot(mtORF1_its_col6_P, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#3EB371", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C", "#E88526")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 1 colonies, Panama", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF1_P_barplot_percolony_stacked
+```
+```{r}
+ITS_mtORF1_C_barplot_percolony_stacked <-
+  ggplot(mtORF1_its_col6_C, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#3EB371", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C", "#E88526")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 1 colonies, Chiriqui", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF1_C_barplot_percolony_stacked
+```
+
+
+```{r}
+ITS_mtORF3_barplot_percolony_stacked <-
+  ggplot(mtORF3_its_col6, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#5DB038", "#3EB371", "#1FB6AA","#00B9E3", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 3 colonies", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF3_barplot_percolony_stacked
+```
+```{r}
+ITS_mtORF3_P_barplot_percolony_stacked <-
+  ggplot(mtORF3_its_col6_P, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#5DB038", "#3EB371", "#1FB6AA","#00B9E3", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 3 colonies, Panama", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF3_P_barplot_percolony_stacked
+```
+```{r}
+ITS_mtORF3_C_barplot_percolony_stacked <-
+  ggplot(mtORF3_its_col6_C, aes(x = temp, y=Abundance, fill = Strain)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=c("#7CAE00", "#5DB038", "#3EB371","#00B9E3", "#C77CFF", "#D78092", "#DF825C")) +
+  theme_bw()+ 
+  labs(title = "Relative Abundance of ITS strain for mtORF 3 colonies, Chiriqui", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS strain") 
+  
+ITS_mtORF3_C_barplot_percolony_stacked
+```
+
+```{r}
+###Using Maxime's code, let's find a raw C vs D metric
+
+algae_prop <- read.csv("C:\\Users\\vmgly\\Documents\\Markergene\\CBASS\\physio\\LPO_TAC\\algae_CBASS_prop_2023.csv")
+
+algae_prop
+
+#sum up rows of the same clade
+algae_prop_cladegroup <- algae_prop %>% group_by(col, temp, gulf, reef, mtorf, Clade) %>% summarize(Abundance = sum(Abundance))
+
+library(tidyverse)
+
+# split abundance column by Clade
+algae_prop_cladegroup2 <- pivot_wider(algae_prop_cladegroup, names_from = "Clade", values_from = "Abundance")
+
+###Vis check
+
+head(algae_prop_cladegroup2)
+
+###See that all "D" is NA bc zero
+
+algae_prop_cladegroup2$D[is.na(algae_prop_cladegroup2$D)] <- 0
+
+algae_prop_cladegroup2
+
+algae_prop_cladegroup2$Relative_Proportion <- with(algae_prop_cladegroup2, ifelse(is.na(C) | C == 0, 0, C / (C + D)))
+
+##Check file
+algae_prop_cladegroup2
+
+algae_prop_cladegroup2$gulf <- as.factor(algae_prop_cladegroup2$gulf)
+
+algae_prop_cladegroup2
+
+###mtorf as factor not integer
+
+algae_prop_cladegroup2$mtorf <-  as.factor(algae_prop_cladegroup2$mtorf)
+
+algae_prop_cladegroup2
+
+###Wohooo!!!! 
+```
+
+```{r}
+library(nlme)
+
+algae_gls <- nlme::gls(Relative_Proportion ~ temp * gulf, data = algae_prop_cladegroup2, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+###Allow for each temp to have own variance est
+
+plot(algae_gls)
+
+algae_gls
+
+```
+
+```{r}
+algae_lm <- lm(Relative_Proportion ~ temp * gulf, data = algae_prop_cladegroup2)
+
+###Allow for each temp to have own variance est
+
+summary(algae_lm)
+
+plot(algae_lm)
+
+algae_lm
+
+```
+```{r}
+algae_lm2 <- lm(Relative_Proportion ~ temp * gulf/mtorf, data = algae_prop_cladegroup2)
+
+summary(algae_lm2)
+
+plot(algae_lm2)
+```
+
+```{r}
+
+summary(algae_gls ,digits=10)
+
+plot(algae_gls)
+
+##ace.gls <- gls(ACE ~ temp * reef/gulf + geno, data = adiv, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+```
+
+
+```{r}
+
+##Boxplots st residuals
+e.algae_gls <- resid(algae_gls, type = "normalized")
+```
+
+```{r}
+boxplot(e.algae_gls ~ algae_prop_cladegroup2$temp)
+
+##Jitter boxplot with st residuals
+ggplot(algae_prop_cladegroup2, aes(x = temp, y = e.algae_gls)) + geom_boxplot() + 
+geom_jitter(height = 0, width = .2) + facet_wrap(~gulf)
+
+##qqplots with st residuals
+qqnorm(e.algae_gls,col="firebrick",abline = c(0,1))
+
+plot(algae_gls)
+
+##why gls? 
+
+### GLS does not assume that the error terms of the regression model are identically distributed or have a constant variance. Instead, GLS allows for heteroscedasticity (unequal variance) and autocorrelation (correlation among error terms) in the error structure, and adjusts the estimates of the coefficients accordingly.
+### 
+```
+
+```{r}
+ 
+algae_gls3 <- nlme::gls(Relative_Proportion ~ temp * gulf * mtorf, data = algae_prop_cladegroup2, na.action = "na.exclude", weights = varIdent(form = ~ 1|temp), control = list(singular.ok = TRUE))
+
+###Allow for each temp to have own variance est
+
+summary(algae_gls3)
+
+plot(algae_gls3)
+
+algae_gls3
+
+summary(algae_gls3)
+```
+
+
+
+
