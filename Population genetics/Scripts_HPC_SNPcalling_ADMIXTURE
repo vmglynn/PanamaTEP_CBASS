@@ -88,7 +88,7 @@ zcat coral_onlyFILTER_rename_28Feb2022.vcf.gz  |head -n5000|tail -n1000|egrep "^
 
 ### ADMIXTURE analyses for all samples today; I closely followed the tutorial by Tyler Smith: https://plantarum.ca/2021/06/01/admixture/
 
-#### First create PLINK file, with loci under potential linkage disiquilibrium (LD) pruned 
+#### First create PLINK file
 
 #!/bin/bash
 #SBATCH --nodes=1
@@ -99,10 +99,8 @@ zcat coral_onlyFILTER_rename_28Feb2022.vcf.gz  |head -n5000|tail -n1000|egrep "^
 #SBATCH --output=%x-%j.out
 module --force purge
 module load StdEnv/2020  plink/2.00-10252019-avx2
-
-
-plink2 --vcf coral_onlyFILTER_bcftools_25Feb2022.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
-
+ 
+plink2 --vcf coral_onlyFILTER_bcftools_19Sep2022.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
 
 ### Run ADMIXTURE with cross-validation (CV) step, for K number of clusters 1-12 
 
