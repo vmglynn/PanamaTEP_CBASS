@@ -27,7 +27,8 @@ module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools
 
 vcftools --gzvcf allSamples.hc.vcf.gz --max-missing 0.5 --mac 3 --minQ 30 --recode --recode-INFO-all --out raw.g5mac3
 
-### Now let's calculate key metrics for downstream visualization in our script, 
+### Now let's calculate key metrics for downstream visualization in our script, vcftools_CORALstatistics_25Feb2022.Rmd, (closely following  the page "Speciation & Population Genomics: a how-to-guide
+" by Joana Meier & Mark Ravinet https://speciationgenomics.github.io/filtering_vcfs/)
 
 #!/bin/bash
 #SBATCH --nodes=1
@@ -53,7 +54,7 @@ vcftools --gzvcf allSamples.hc.vcf.gz --missing-site --out samples_misssite
 
 vcftools --gzvcf allSamples.hc.vcf.gz --het --out samples_het
 
-###Based on the findings from our script xxx, we then can filter our data further
+###Based on the findings from our script vcftools_CORALstatistics_25Feb2022.Rmd, we then can filter our data further
 
 !/bin/bash
 #SBATCH --nodes=1
@@ -69,12 +70,176 @@ vcftools --gzvcf allSamples.hc.vcf.gz \
 --minDP 5 --maxDP 10 --recode --stdout | gzip -c > \
 allSamples_filtered.hc.vcf.gz
 
-### To create vcf file pruned for linkage disiquilibrium (LD)
 
-### To create vcf LD-pruned file, ensuring each sample has a unique ID
-
-### To run ADMIXTURE analyses
+### To run ADMIXTURE analyses; I closely followed the tutorial by Tyler Smith: https://plantarum.ca/2021/06/01/admixture/
 
 #### First create PLINK file 
 
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
 
+plink2 --vcf coral_onlyFILTER_bcftools_25Feb2022.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
+
+### Run ADMIXTURE with cross-validation (CV) step, for K number of clusters 1-12 
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+
+
+
+for K in `seq -w 1 12`
+do
+    admixture_linux-1.3.0/admixture --cv plink_coral_16Jan2023_PCA.bed $K > ktests/k${K}.out
+
+
+done
+
+
+###Let's inspect the CV results
+
+grep -h CV ktests/*out
+
+CVs <- read.table("CV.csv", sep = " ")
+CVs <- CVs[, 3:4] ## drop the first two columns
+## Remove the formatting around the K values:
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\(K=",
+                replacement = "")
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\):",
+                replacement = "") 
+head(CVs)
+
+
+plot(CVs, xlab = "K", ylab = "CV error") 
+
+
+###Let's re-run ADMIXTURE across mtORF lineages
+
+###First, divide the VCF by mtORF, so mtORF 1 and mtORF 3 comprise two separate files
+
+#### mtORF 1 only vcf file
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G    
+#SBATCH --account=def-barrett   
+#SBATCH --time=01:00:00   
+#SBATCH --output=%x-%j.out      
+module load StdEnv/2020 gcc/9.3.0 bcftools/1.13 
+
+bcftools view -s ML3837,ML3723,ML3739,ML3741,ML3743,ML3749,ML3766,ML3790,ML3800,ML3813,ML3828,ML3841,ML3725,ML3726,ML3727,ML3729,ML3730,ML3731,ML3732,ML3760,ML3761,ML3762,ML3763,ML3765,ML3768,ML3770,ML3772,ML3775,ML3778,ML3779,ML3781,ML3784,ML3785,ML3788,ML3791,ML3792,ML3796,ML3797,ML3802,ML3807,ML3814,ML3815,ML3822,ML3823,ML3831,ML3843,ML3844,ML3846,ML3848,ML3849,ML3850,ML3851,ML3853,ML3854,ML3856,ML3857,ML3858,ML3860,ML3861,ML3862 coral_onlyFILTER_bcftools_25Feb2022.vcf > mtORF1_coral_onlyFILTER_bcftools_26June2022.vcf
+
+cat mtORF1_coral_onlyFILTER_bcftools_26June2022.vcf|head -n5000|tail -n1000|egrep "^#CHROM"|tr '\t' '\n' > samplesnames_mtORF1_26June2022.txt
+
+##### Create mtORF 1 PLINK file
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+
+plink2 --vcf mtORF1_coral_onlyFILTER_bcftools_26June2022.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
+
+##### Run ADMIXTURE mtORF 1
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=10:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+
+for K in `seq -w 1 12`
+do
+    admixture_linux-1.3.0/admixture --cv pop.admix.bed $K > ktests/k${K}.out
+ 
+done
+
+grep -h CV ktests/*out 
+
+
+#### mtORF 3 only vcf file
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=01:00:00
+#SBATCH --output=%x-%j.out
+module load StdEnv/2020 gcc/9.3.0 bcftools/1.13
+
+
+bcftools view -s ML3723,ML3739,ML3741,ML3743,ML3749,ML3766,ML3790,ML3800,ML3813,ML3828,ML3841,ML3725,ML3726,ML3727,ML3729,ML3730,ML3731,ML3732,ML3760,ML3761,ML3762,ML3763,ML3765,ML3768,ML3770,ML3772,ML3775,ML3778,ML3779,ML3781,ML3784,ML3785,ML3788,ML3791,ML3792,ML3796,ML3797,ML3802,ML3807,ML3814,ML3815,ML3822,ML3823,ML3831,ML3843,ML3844,ML3846,ML3848,ML3849,ML3850,ML3851,ML3853,ML3854,ML3856,ML3857,ML3858,ML3860,ML3861,ML3862 coral_onlyFILTER_bcftools_25Feb2022.vcf > mtORF3_coral_onlyFILTER_bcftools_26June2022_FINAL.vcf
+
+#### Create mtORF 3 PLINK file 
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+
+plink2 --vcf mtORF3_coral_onlyFILTER_bcftools_26June2022_FINAL.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
+
+
+#### Run ADMIXTURE mtORF 3
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=10:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+ 
+ 
+for K in `seq -w 1 12`
+do
+    admixture_linux-1.3.0/admixture --cv pop.admix.bed $K > ktests/k${K}.out
+ 
+done
+
+
+
+####OTHER DETAILS
+
+### You may notice the various vcf files above -- these all are have different sample names based on the downstream analyses to be done
+
+#### These were generated as follows:
+
+#####
+
+##### 
