@@ -69,4 +69,12 @@ vcftools --gzvcf allSamples.hc.vcf.gz \
 --minDP 5 --maxDP 10 --recode --stdout | gzip -c > \
 allSamples_filtered.hc.vcf.gz
 
+### To create vcf file pruned for linkage disiquilibrium (LD)
+
+### To create vcf LD-pruned file, ensuring each sample has a unique ID
+
+### To run ADMIXTURE analyses
+
+#### First create PLINK file 
+
 
