@@ -66,10 +66,7 @@ vcftools --gzvcf coral_only_bcftools_24Feb2022.vcf.gz --het --out CORALsamples_h
 module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools 
 
 vcftools --gzvcf coral_only_bcftools_24Feb2022.vcf.gz \
---remove-indels --maf 0.1 --max-missing 0.2 --minQ 30 \
---min-meanDP 3 --max-meanDP 5 \
---minDP 3 --maxDP 5 --recode --stdout | gzip -c > \
-coral_onlyFILTER_bcftools_25Feb2022.vcf.gz
+--remove-indels --maf 0.05 --minQ 30 --minDP 5 --maxDP 10 --max-missing  0.4 --recode --stdout  > coral_onlyFILTER_bcftools_19Sep2022.vcf
 
 ###Rename samples so each name is encoded as REEF_GULF_YEAR
 
@@ -82,9 +79,25 @@ coral_onlyFILTER_bcftools_25Feb2022.vcf.gz
 #SBATCH --output=%x-%j.out      
 module load StdEnv/2020 gcc/9.3.0 bcftools/1.13 
 
-bcftools reheader -s newnames_28Feb2022.txt -o coral_onlyFILTER_rename_28Feb2022.vcf coral_onlyFILTER_bcftools_25Feb2022.vcf
- 
-zcat coral_onlyFILTER_rename_28Feb2022.vcf.gz  |head -n5000|tail -n1000|egrep "^#CHROM"|tr '\t' '\n' > samplesnames.txt 
+bcftools reheader -s newnames_28Feb2022.txt -o coral_onlyFILTER_rename_19Sep2022.vcf  coral_onlyFILTER_bcftools_19Sep2022.vcf
+
+###Prune loci under potential linkage disiquilibrium (LD)
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=06:00:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+
+VCF=coral_onlyFILTER_bcftools_19Sep2022.vcf
+
+
+plink2 --vcf $VCF --double-id --allow-extra-chr --min-alleles 2 --set-missing-var-ids @:# --extract LD_prune_coral_19Sep2022.prune.in --make-bed --pca --out LD_prune_coral_19Sep2022 --threads 1 --max-alleles 2
 
 ### ADMIXTURE analyses for all samples today; I closely followed the tutorial by Tyler Smith: https://plantarum.ca/2021/06/01/admixture/
 
@@ -99,28 +112,30 @@ zcat coral_onlyFILTER_rename_28Feb2022.vcf.gz  |head -n5000|tail -n1000|egrep "^
 #SBATCH --output=%x-%j.out
 module --force purge
 module load StdEnv/2020  plink/2.00-10252019-avx2
- 
+
+
 plink2 --vcf coral_onlyFILTER_bcftools_19Sep2022.vcf --make-bed --out pop.admix --allow-extra-chr 0 -max-alleles 2 --min-alleles 2
 
-### Run ADMIXTURE with cross-validation (CV) step, for K number of clusters 1-12 
+
+### Run ADMIXTURE with cross-validation (CV) step, for K number of clusters 1-12
 
 #!/bin/bash
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=40
 #SBATCH --mem=125G
 #SBATCH --account=def-barrett
-#SBATCH --time=10:00:00
+#SBATCH --time=06:00:00
 #SBATCH --output=%x-%j.out
 module --force purge
 module load StdEnv/2020  plink/2.00-10252019-avx2
-
-
+ 
+ 
 for K in `seq -w 1 12`
 do
     admixture_linux-1.3.0/admixture --cv pop.admix.bed $K > ktests/k${K}.out
-
-
+ 
 done
+
 
 ###Let's inspect the CV results
 
@@ -242,5 +257,4 @@ do
     admixture_linux-1.3.0/admixture --cv pop.admix.bed $K > ktests/k${K}.out
  
 done
-
 
