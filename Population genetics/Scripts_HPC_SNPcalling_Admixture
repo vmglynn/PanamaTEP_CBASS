@@ -1,0 +1,72 @@
+##Script used to run GenPipes on the Digital Research Alliance of Canada's High Performance Computing (HPC). Link to GenPipes DNA Sequencing Pipeline: https://genpipes.readthedocs.io/en/latest/user_guide/pipelines/gp_dnaseq.html
+
+module load mugqic/genpipes/3.6.2 mugqic/python/2.7.14 
+
+ls $MUGQIC_INSTALL_HOME/genomes/species
+
+ls $MUGQIC_INSTALL_HOME/genomes/species/Pocillopora_damicornis.GCF_003704095.1
+
+####Run in sanity check mode to make sure all files/dependencies needed are there
+
+dnaseq.py -t mugqic -c $MUGQIC_PIPELINES_HOME/pipelines/dnaseq/dnaseq.base.ini $MUGQIC_PIPELINES_HOME/pipelines/dnaseq/dnaseq.cedar.ini /cvmfs/soft.mugqic/CentOS6/genomes/species/Pocillopora_damicornis.GCF_003704095.1/Pocillopora_damicornis.GCF_003704095.1.UCSC2019-08-07.ini -r FINAL_Readset_Pdam_GenPipes_6Dec2021_Francoisedit_v3.txt -s 2-7,9-17 --sanity-check --no-json --report > dnaseqCommands_fullsteps6Jan2022_mugqic.sh  
+
+bash dnaseqCommands_fullsteps6Jan2022_mugqic.sh
+
+## VCF statistics for downstream QC
+
+### First let's preliminarily filter SNPs from GenPipes' vcf file on the basis of variant missingess (max-missing), minor allele count (MAC), and quality score (Q)  
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G    
+#SBATCH --account=def-barrett   
+#SBATCH --time=02:00:00   
+#SBATCH --output=%x-%j.out      
+module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools  
+
+vcftools --gzvcf allSamples.hc.vcf.gz --max-missing 0.5 --mac 3 --minQ 30 --recode --recode-INFO-all --out raw.g5mac3
+
+### Now let's calculate key metrics for downstream visualization in our script, 
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G    
+#SBATCH --account=def-barrett   
+#SBATCH --time=06:00:00   
+#SBATCH --output=%x-%j.out      
+module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools  
+module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools  
+
+vcftools --gzvcf allSamples.hc.vcf.gz --freq2 --out samples_allelefreq --max-alleles 2
+
+vcftools --gzvcf allSamples.hc.vcf.gz --depth --out samples_mindepth
+ 
+vcftools --gzvcf allSamples.hc.vcf.gz --site-mean-depth --out samples_site_mindepth
+
+vcftools --gzvcf allSamples.hc.vcf.gz --site-quality --out samples_sitequal
+
+vcftools --gzvcf allSamples.hc.vcf.gz --missing-indv --out samples_missindi
+
+vcftools --gzvcf allSamples.hc.vcf.gz --missing-site --out samples_misssite
+
+vcftools --gzvcf allSamples.hc.vcf.gz --het --out samples_het
+
+###Based on the findings from our script xxx, we then can filter our data further
+
+!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G    
+#SBATCH --account=def-barrett   
+#SBATCH --time=06:00:00   
+#SBATCH --output=%x-%j.out      
+module load StdEnv/2020 gcc/9.3.0 r/4.0.2 vcftools 
+
+vcftools --gzvcf allSamples.hc.vcf.gz \
+--remove-indels --maf 0.1 --max-missing 0.5 --minQ 30 \
+--minDP 5 --maxDP 10 --recode --stdout | gzip -c > \
+allSamples_filtered.hc.vcf.gz
+
+
