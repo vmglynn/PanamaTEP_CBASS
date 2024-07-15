@@ -1,0 +1,111 @@
+---
+title: "vcftools statistics"
+output: html_notebook
+---
+===
+vcftools statistics, run on Cedar
+
+```{r}
+library(tidyverse)
+library(readr)
+```
+
+```{r}
+var_qual <- read_delim("~/holobiont_2020-2021/Coralonly_correctfilter_stats_25Feb2022/CORALsamples_sitequal.lqual", delim = "\t",
+           col_names = c("chr", "pos", "qual"), skip = 1)
+```
+
+```{r}
+a <- ggplot(var_qual, aes(qual)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3) + xlim(0,1000)
+
+a + theme_light()
+
+##Remember that a Phred score of 30 represents a 1 in 1000 chance that our SNP call is erroneous. Clearly most sites exceed this - suggesting we have a lot of high confidence calls. This is most probably because we have sufficient read depth (as you will see in the next section). However since most sites have a high quality we can see that filtering on this is not really going to be that useful.
+
+##We recommend setting a minimum threshold of 30 and filtering more strongly on other aspects of the data.
+```
+```{r}
+var_depth <- read_delim("CORALsamples_site_mindepth.ldepth.mean", delim = "\t",
+           col_names = c("chr", "pos", "mean_depth", "var_depth"), skip = 1)
+```
+```{r}
+
+
+summary(var_depth$mean_depth)
+a <- ggplot(var_depth, aes(mean_depth)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)+ xlim(0,25)
+a + theme_light()
+
+##Min depth 0.5, max dept 10; this is not bad at all, needed >1X! 
+```
+```{r}
+summary(var_depth$mean_depth)
+
+a + theme_light() + xlim(0, 1)
+```
+
+```{r}
+var_miss <- read_delim("CORALsamples_misssite.lmiss", delim = "\t",
+                       col_names = c("chr", "pos", "nchr", "nfiltered", "nmiss", "fmiss"), skip = 1)
+```
+
+```{r}
+a <- ggplot(var_miss, aes(fmiss)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+```
+```{r}
+summary(var_miss$fmiss)
+
+##40% missingness so max-missing 0.6 !  
+
+## One thing to keep in mind here is that different datasets will likely have different missingness profiles. RAD-sequencing data for example is likely to have a slightly higher mean missingnes than whole genome resequencing data because it is a random sample of RAD sites from each individual genome - meaning it is very unlikely all individuals will share exactly the same loci (although you would hope the majority share a subset).
+```
+
+```{r}
+var_freq <- read_delim("CORALsamples_allelefreq.frq", delim = "\t",
+                       col_names = c("chr", "pos", "nalleles", "nchr", "a1", "a2"), skip = 1)
+```
+
+```{r}
+var_freq$maf <- var_freq %>% select(a1, a2) %>% apply(1, function(z) min(z))
+```
+
+```{r}
+a <- ggplot(var_freq, aes(maf)) + geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(var_freq$maf)
+
+##It is an important measure because low MAF alleles may only occur in one or two individuals. It is possible that some of these low frequency alleles are in fact unreliable base calls - i.e. a source of error. 
+
+##For now however, we will set our MAF to 0.1
+```
+```{r}
+ind_depth <- read_delim("CORALsamples_mindepth.idepth", delim = "\t",
+                        col_names = c("ind", "nsites", "depth"), skip = 1)
+
+a <- ggplot(ind_depth, aes(depth)) + geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+```
+```{r}
+ind_miss  <- read_delim("CORALsamples_missindi.imiss", delim = "\t",
+                        col_names = c("ind", "ndata", "nfiltered", "nmiss", "fmiss"), skip = 1)
+
+a <- ggplot(ind_miss, aes(fmiss)) + geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+```
+```{r}
+ind_het <- read_delim("CORALsamples_het.het", delim = "\t",
+           col_names = c("ind","ho", "he", "nsites", "f"), skip = 1)
+
+a <- ggplot(ind_het, aes(f)) + geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+```
+
+```{r}
+##None of them shows high levels of allelic dropout (strongly negative F)
+
+##However, is there DNA contamination (highly positive F)?? 
+
+###  Because it is a positive number, we can see there are fewer than the expected number of heterozygotes according to the Hardy-Weinberg Principle. Too few heterozygotes can imply inbreeding. Makes sense with corals -- clones? 
+```
+
