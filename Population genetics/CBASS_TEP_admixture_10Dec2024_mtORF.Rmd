@@ -1,0 +1,197 @@
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+
+###Read in CV data from running ADMIXTURE on HPC
+
+CVs <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\mtORF_CV_10Dec2024.csv", sep = " ")
+
+CVs
+```
+
+```{r}
+
+CVs <- CVs[, 3:4] 
+
+## drop the first two columns
+## Remove the formatting around the K values
+
+CVs
+```
+
+```{r}
+
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\(K=",
+                replacement = "")
+CVs[, 1] <- gsub(x = CVs[, 1], pattern = "\\):",
+                replacement = "") 
+head(CVs)
+
+set.seed(17272)
+
+#### From inspection of the CV values and knowing we have 6 reef sites, we will select K=6. Why?
+
+### K=1 and K=2 are larger than K=6, K=4 and K=5 are analogous and yet K>6 are increasing larger. 
+
+### As we have a priori expectations of each reef having a different demographic histoury/genetic background, given microhabitats at each, under the larger pattern of upwelling regimes throughout the region, we will use this ecological inference to set K=6. Yet, we will explore the other K values to ensure inferences are sound at K=6,  
+```
+
+```{r}
+
+###Plot of CV error vs K clusters
+
+plot(CVs, xlab = "K", ylab = "CV error")
+```
+
+```{r}
+
+###Now read in Q files 
+
+ad2 <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\pruned_snps_mtorf_10Dec2024.2.Q")
+head(ad2)
+
+ad3 <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\pruned_snps_mtorf_10Dec2024.3.Q")
+head(ad3)
+
+ad4 <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\pruned_snps_mtorf_10Dec2024.4.Q")
+head(ad4)
+
+ad5 <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\pruned_snps_mtorf_10Dec2024.5.Q")
+head(ad5)
+
+ad6 <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\pruned_snps_mtorf_10Dec2024.6.Q")
+head(ad6)
+```
+
+
+```{r}
+###What would the divisions look like if we think about mtORF? 
+
+popmap_mt <- read.csv("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\mtORF_admixture\\popmap_mt_10Dec2024.csv", fileEncoding="UTF-8-BOM")
+
+popmap_mt
+
+```
+
+
+```{r}
+
+###Set color scheme for K=6 
+
+colorBlindGrey   <- c("#999999", "#E69F00", "#56B4E9", "#009E73", 
+                       "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+```
+
+```{r}
+ad6_mt <- cbind(popmap_mt, ad6)
+head(ad6_mt)
+
+ad6_mt
+```
+
+```{r}
+###Reorder so sort samples by popnum
+ad6_mt <- ad6_mt[order(ad6_mt$popnum), ]
+
+ad6_mt 
+```
+
+
+```{r}
+barplot(t(as.matrix(ad6_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+table(ad6_mt$popname)
+```
+
+```{r}
+xlabels6 <- aggregate(1:nrow(ad6_mt),
+                    by = list(ad6_mt[, "popname"]),
+                    FUN = median)
+xlabels6
+```
+
+```{r}
+sampleEdges6<- aggregate(1:nrow(ad6_mt),
+                        by = list(ad6_mt[, "popname"]), 
+                        FUN = max)
+sampleEdges6
+```
+
+```{r}
+k6_mt <- barplot(t(as.matrix(ad6_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges6$x, lwd = 3)
+axis(1, at = xlabels6$x + 0.5, labels = xlabels6$Group.1)
+
+k6_mt
+
+ggsave("k6mt.png")
+```
+```{r}
+
+###Wohoo!!! k=6 looks ID to the one we created for the dataset ran with all 137 samples on the basis of reef!
+
+###But by looking at the CV data, k = 4 is best pick here 
+
+ad4_mt <- cbind(popmap_mt, ad4)
+head(ad4_mt)
+
+ad4_mt
+```
+
+```{r}
+###Reorder so sort samples by popnum
+ad4_mt <- ad4_mt[order(ad4_mt$popnum), ]
+
+ad4_mt 
+```
+
+
+```{r}
+barplot(t(as.matrix(ad4_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+```
+
+```{r}
+table(ad4_mt$popname)
+```
+
+```{r}
+xlabels4 <- aggregate(1:nrow(ad4_mt),
+                    by = list(ad4_mt[, "popname"]),
+                    FUN = median)
+xlabels4
+```
+
+```{r}
+sampleEdges4<- aggregate(1:nrow(ad4_mt),
+                        by = list(ad4_mt[, "popname"]), 
+                        FUN = max)
+sampleEdges4
+```
+
+```{r}
+k4_mt <- barplot(t(as.matrix(ad4_mt[, -1:-3])), col=colorBlindGrey, 
+        space = 0, xlab="Population", ylab = "Ancestry", 
+        border=NA, axisnames = FALSE)
+abline(v = sampleEdges4$x, lwd = 3)
+axis(1, at = xlabels4$x + 0.5, labels = xlabels4$Group.1)
+
+k4_mt
+
+ggsave("k4mt.png")
+```
+
+
+```{r}
+
+```
