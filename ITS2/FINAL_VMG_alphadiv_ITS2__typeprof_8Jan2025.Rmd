@@ -1,0 +1,368 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+## This code was used to create the relative abundance plots as well as the alpha diversity plots and statistics
+```
+
+
+```{r}
+#clear environment
+rm(list = ls())
+```
+
+
+```{r}
+## Set random seed for reproducibility 
+set.seed(1789)
+```
+
+
+```{r}
+#Here are the only necessary packages
+
+library(tidyverse)
+library(phyloseq)
+library(car)
+library(FSA)
+library(RColorBrewer)
+library(ggsignif)
+library(stats)
+library(nlme)
+```
+
+
+```{r}
+#symportal output absolute abundance data
+DIV_symportal <- read.delim("C:\\Users\\vmgly\\Desktop\\20221128T204914_vglynn\\20221128T204914_vglynn\\post_med_seqs\\230_20221201T110004_DBV_20221202T082004.seqs.absolute.abund_only.txt", header = TRUE, check.names = FALSE)
+
+typeprof_symportal <- read.delim("C:\\Users\\vmgly\\Desktop\\20221128T204914_vglynn\\20221128T204914_vglynn\\its2_type_profiles\\v2_230_20221201T110004_DBV_20221202T082004.profiles.absolute.abund_and_meta.txt", header = TRUE, check.names = FALSE)
+
+##This v2 simply has the first few rows with ext info removed, and the sample_uid column properly labelled
+```
+
+```{r}
+typeprof_symportal
+```
+
+
+```{r}
+#sample data
+sample_data <- read.csv("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\Sampledata_ITS2_CBASS_18Oct2022_MLG.csv")
+
+sample_data
+```
+
+```{r}
+#combine both symportal and sample data by sample uid
+typeprof_meta <- merge(sample_data, typeprof_symportal, by=c('sample_uid'))
+
+typeprof_meta
+```
+```{r}
+column_names <- colnames(typeprof_meta)[10:31]
+
+column_names
+```
+
+
+```{r}
+##So we can plot each type-profile within a single bar of a stacked bar chart, let's turn to long format
+
+typeprof_meta_long <- typeprof_meta %>%
+  pivot_longer(cols = column_names, # Replace with actual taxon column names
+               names_to = "type_profile", 
+               values_to = "abundance")
+
+typeprof_meta_long ##sanity check, all merged well! 
+```
+
+```{r}
+##Remove NAs, which are ctrl samples
+
+typeprof_meta_long_clean <- typeprof_meta_long %>% filter(type == "S")
+
+typeprof_meta_long_clean 
+```
+
+
+```{r}
+#Make color manual palette
+
+type_profiles_colours <- c("#36d915", "#3EB371", "#12c684","#30d3b3","#8A9A5B","#00FF7F", "#097969", "#4CBB17", "#40E0D0", "#B4C424","#FFFF00", "#DFFF00", "#f0fc03", "#fcf103", "#f2d102", "#874dd7", "#C77CFF", "#CF7EC8", "#D78092", "#DF825C", "#E88526", "#faa015")
+  
+
+```
+
+```{r}
+###sanity check to ensure all profiles = colours defined
+
+all_profiles <- column_names
+
+all_profiles
+```
+
+```{r}
+##typeprof_meta_long_clean$type_profile <- factor(typeprof_meta_long_clean$type_profile, levels = all_profiles)
+```
+
+
+```{r}
+####ITS2 strain Relative Abundance Stacked Bar Plots at Baseline####
+```
+
+
+```{r}
+####ITS2 strain Abundance Stacked Bar Plots at all temperatures####
+```
+
+
+```{r}
+##ITS strain across temperatures and Gulfs - barplot
+ITSstrain_Barplot_temp_n_gulf_stacked <-
+  ggplot(typeprof_meta_long_clean, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ gulf, scales = "free", ncol = 5) +
+  scale_fill_manual(values=type_profiles_colours) +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 6),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+ 
+  labs(title = "Relative abundance of ITS2 type-profiles across temperature treatments", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type-profile") 
+  
+ITSstrain_Barplot_temp_n_gulf_stacked
+
+gulf_orf_tempTOGETHER_ITSprof <- ITSstrain_Barplot_temp_n_gulf_stacked + facet_wrap (gulf ~ mtorf) 
+
+gulf_orf_tempTOGETHER_ITSprof
+```
+```{r}
+##Let's save high quality version of the legend
+
+library(gtable)
+library(grid)
+
+get_legend <- function(p) {
+  plot_grob <- ggplotGrob(p)
+  legend <- gtable_filter(plot_grob, "guide-box") # Extract the part that contains the legend
+  return(legend)
+}
+
+# Extract the legend
+legend <- get_legend(gulf_orf_tempTOGETHER_ITSprof)
+
+# Display just the legend
+grid.newpage()
+grid.draw(legend)
+
+ggsave("legend_ITS2_typeprof_9Jan2025_newcol.png", plot = legend, width = 14, height = 3, dpi = 700)
+```
+
+
+```{r}
+###Let's see ITS2 type-profiles per colony
+```
+
+
+```{r}
+##Subset by mtORF for plotting
+
+###mtORF 1
+
+mtORF1_prof <- filter(typeprof_meta_long_clean, mtorf == "1")
+
+mtORF1_prof
+
+###Remove temp from plotting where no data for a given colony
+
+mtORF1_prof_filtered <- mtORF1_prof %>%
+  group_by(col, temp) %>%
+  filter(any(abundance > 0)) %>%
+  ungroup()
+
+###mtORF 1 in Chiriqui
+
+mtORF1_C_prof <- filter(mtORF1_prof_filtered, gulf == "Chiriqui")
+
+mtORF1_C_prof 
+
+###mtORF 1 in Panama
+
+mtORF1_P_prof <- filter(mtORF1_prof_filtered, gulf == "Panama")
+
+mtORF1_P_prof
+
+```
+
+```{r}
+
+###mtORF 3 only
+
+mtORF3_prof <- filter(typeprof_meta_long_clean, mtorf == "3")
+
+mtORF3_prof
+
+###Remove temp from plotting where no data for a given colony
+
+mtORF3_prof_filtered <- mtORF3_prof %>%
+  group_by(col, temp) %>%
+  filter(any(abundance > 0)) %>%
+  ungroup()
+
+###mtORF 3 Chiriqui
+
+mtORF3_C_prof <- filter(mtORF3_prof_filtered, gulf == "Chiriqui")
+
+mtORF3_C_prof
+
+###mtORF 3 Panama
+
+mtORF3_P_prof <- filter(mtORF3_prof_filtered, gulf == "Panama")
+
+mtORF3_P_prof
+
+```
+
+```{r}
+ITS_mtORF1_barplot_percolony_stacked <-
+  ggplot(mtORF1_prof_filtered, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=type_profiles_colours) +
+ theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 1 colonies", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF1_barplot_percolony_stacked
+```
+
+
+```{r}
+library(grid) 
+library(gtable)
+```
+
+```{r}
+ITS_mtORF1_P_barplot_percolony_stacked <-
+  ggplot(mtORF1_P_prof, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=type_profiles_colours) +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 1 colonies, Panama", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF1_P_barplot_percolony_stacked
+```
+
+```{r}
+###Check colours per profile are consistent
+levels(mtORF1_P_prof$type_profile)
+```
+
+```{r}
+ITS_mtORF1_C_barplot_percolony_stacked <-
+  ggplot(mtORF1_C_prof, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=type_profiles_colours) +
+  theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 1 colonies, Chiriqui", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF1_C_barplot_percolony_stacked
+```
+
+
+```{r}
+ITS_mtORF3_barplot_percolony_stacked <-
+  ggplot(mtORF3_prof_filtered, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values= type_profiles_colours) +
+   theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 3 colonies", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF3_barplot_percolony_stacked
+```
+
+```{r}
+ITS_mtORF3_P_barplot_percolony_stacked <-
+  ggplot(mtORF3_P_prof, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=type_profiles_colours) +
+   theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 3 colonies, Panama", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF3_P_barplot_percolony_stacked
+```
+
+```{r}
+ITS_mtORF3_C_barplot_percolony_stacked <-
+  ggplot(mtORF3_C_prof, aes(x = temp, y=abundance, fill = type_profile)) +
+  geom_col(position = "fill") + 
+  facet_wrap(~ col, scales = "free", ncol = 5) +
+   scale_fill_manual(values=type_profiles_colours) +
+   theme(
+    legend.position = "bottom",
+    legend.text = element_text(size = 4),
+    legend.title = element_text(size = 5),
+    legend.key.size = unit(0.5, "cm"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    ##panel.background = element_blank(),
+  )+  
+  labs(title = "Relative Abundance of ITS2 type profiles for mtORF 3 colonies, Chiriqui", x= "Temperature treatment (C)", y = "Abundance", fill = "ITS2 type profile") 
+  
+ITS_mtORF3_C_barplot_percolony_stacked
+```
+
+```{r}
+
+```
+

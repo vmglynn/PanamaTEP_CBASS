@@ -1,0 +1,400 @@
+
+```{r}
+#clear environment
+rm(list = ls())
+```
+
+
+```{r}
+## Set random seed for reproducibility 
+set.seed(1789)
+```
+
+
+```{r}
+#Here are the only necessary packages
+library(tidyverse)
+library(phyloseq)
+library(car)
+library(FSA)
+library(ape)
+library(vegan)
+library(microViz)
+library(dplyr)
+```
+
+
+```{r}
+
+#symportal output absolute abundance data
+Symportal <- read.delim("C:\\Users\\vmgly\\Desktop\\20221128T204914_vglynn\\20221128T204914_vglynn\\post_med_seqs\\230_20221201T110004_DBV_20221202T082004.seqs.absolute.abund_only.txt", header = TRUE, check.names = FALSE)
+
+Symportal
+
+#sample data
+sample_data <- read.csv("C:\\Users\\vmgly\\Downloads\\wetransfer_maxime-s-thesis-documents_2023-05-01_2253 (1)\\Sampledata_ITS2_CBASS_18Oct2022_MLG.csv")
+
+sample_data
+```
+
+```{r}
+#combine both symportal and sample data by sample uid
+its2Seq <- merge(sample_data, Symportal, by=c('sample_uid'))
+
+its2Seq
+```
+
+```{r}
+#remove NAs
+its2Seq2 <- its2Seq[-c(31, 32, 33, 34, 36, 37, 69, 70, 72, 73, 105, 106, 108, 109, 142, 144, 145),]
+row.names(its2Seq2) <- NULL
+
+its2Seq2
+```
+
+```{r}
+
+#separate again
+otu_table1 <- dplyr::select(its2Seq2, -c(2:9))
+sample_data1 <- dplyr::select(its2Seq2, c(1:9))
+
+otu_table1 ##Sanity check
+sample_data1  ##Sanity check
+```
+
+
+```{r}
+# Make a phyloseq object
+
+#This one has NAs filtered out
+otu <- otu_table(otu_table1, taxa_are_rows = FALSE)
+sam <- sample_data(sample_data1)
+ps1 <- phyloseq(otu, sam)
+taxa_names(ps1) <- paste0("asv", seq(ntaxa(ps1))) #this tricks phyloseq into using ASV instead of OTU
+ps1
+
+#Make a dataset of only baseline temperatures
+Baseline2 <- filter(its2Seq2, temp == 28.5, preserve = TRUE)
+otu_table_baseline <- dplyr::select(Baseline2, -c(2:9))
+sample_data_baseline <- dplyr::select(Baseline2, c(1:9))
+
+#Make a phyloseq object at baseline 
+otu_baseline <- otu_table(otu_table_baseline, taxa_are_rows = FALSE)
+sam_baseline <- sample_data(sample_data_baseline)
+ps_baseline <- phyloseq(otu_baseline, sam_baseline)
+#taxa_names(ps_baseline) <- paste0("asv", seq(ntaxa(ps_baseline))) #this tricks phyloseq into using ASV instead of OTU
+ps_baseline
+```
+```{r}
+###Horn's index
+```
+
+```{r}
+
+## Set random seed for reproducibility 
+
+set.seed(8765)
+
+```
+
+```{r}
+###First, let's create a df for each temp, within each mtORF x gulf comparison (i.e. Temperature 36°C for mtORF 1 in the Gulf of Panama)
+```
+
+
+```{r}
+###Now let's do this with mtORF 1 and 3 within each gulf
+
+###Panama
+
+physeq1_Pan <- subset_samples(ps1, gulf=="Panama")
+sample_data(physeq1_Pan)
+
+###mtORF 1
+
+physeq1_Pan_1 <- subset_samples(physeq1_Pan, mtorf=="1")
+sample_data(physeq1_Pan_1)
+```
+
+```{r}
+###Pan mtORF 1, 28.5C
+
+physeq1_Pan_1_28.5 <- subset_samples(physeq1_Pan_1, temp=="28.5")
+sample_data(physeq1_Pan_1_28.5)
+
+####Pan mtORF 1, 30C
+
+physeq1_Pan_1_30 <- subset_samples(physeq1_Pan_1, temp=="30")
+sample_data(physeq1_Pan_1_30)
+
+####Pan mtORF 1, 33C
+
+physeq1_Pan_1_33 <- subset_samples(physeq1_Pan_1, temp=="33")
+sample_data(physeq1_Pan_1_33)
+
+####Pan mtORF 1, 36C
+
+physeq1_Pan_1_36 <- subset_samples(physeq1_Pan_1, temp=="36")
+sample_data(physeq1_Pan_1_36)
+
+```
+
+````{r}
+###mtORF 3
+
+physeq1_Pan_3 <- subset_samples(physeq1_Pan, mtorf=="3")
+sample_data(physeq1_Pan_3)
+```
+
+```{r}
+
+###Pan mtORF 3, 28.5C
+
+physeq1_Pan_3_28.5 <- subset_samples(physeq1_Pan_3, temp=="28.5")
+sample_data(physeq1_Pan_3_28.5)
+
+####Pan mtORF 3, 30C
+
+physeq1_Pan_3_30 <- subset_samples(physeq1_Pan_3, temp=="30")
+sample_data(physeq1_Pan_3_30)
+
+####Pan mtORF 3, 33C
+
+physeq1_Pan_3_33 <- subset_samples(physeq1_Pan_3, temp=="33")
+sample_data(physeq1_Pan_3_33)
+
+####Pan mtORF 3, 36C
+
+physeq1_Pan_3_36 <- subset_samples(physeq1_Pan_3, temp=="36")
+sample_data(physeq1_Pan_3_36)
+```
+
+```{r}
+###Chiriqui
+
+physeq1_Chr <- subset_samples(ps1, gulf=="Chiriqui")
+sample_data(physeq1_Chr)
+
+###mtORF 1
+
+physeq1_Chr_1 <- subset_samples(physeq1_Chr, mtorf=="1")
+sample_data(physeq1_Chr_1)
+```
+
+```{r}
+###Chr mtORF 1, 28.5C
+
+physeq1_Chr_1_28.5 <- subset_samples(physeq1_Chr_1, temp=="28.5")
+sample_data(physeq1_Chr_1_28.5)
+
+###Chr mtORF 1, 30C
+
+physeq1_Chr_1_30 <- subset_samples(physeq1_Chr_1, temp=="30")
+sample_data(physeq1_Chr_1_30)
+
+###Chr mtORF 1, 33C
+
+physeq1_Chr_1_33 <- subset_samples(physeq1_Chr_1, temp=="33")
+sample_data(physeq1_Chr_1_33)
+
+###Chr mtORF 1, 36C
+
+physeq1_Chr_1_36 <- subset_samples(physeq1_Chr_1, temp=="36")
+sample_data(physeq1_Chr_1_36)
+
+```
+
+````{r}
+###mtORF 3
+physeq1_Chr_3 <- subset_samples(physeq1_Chr, mtorf=="3")
+sample_data(physeq1_Chr_3)
+```
+
+```{r}
+###Chr mtORF 3, 28.5C
+
+physeq1_Chr_3_28.5 <- subset_samples(physeq1_Chr_3, temp=="28.5")
+sample_data(physeq1_Chr_3_28.5)
+
+###Chr mtORF 3, 30C
+
+physeq1_Chr_3_30 <- subset_samples(physeq1_Chr_3, temp=="30")
+sample_data(physeq1_Chr_3_30)
+
+###Chr mtORF 3, 33C
+
+physeq1_Chr_3_33 <- subset_samples(physeq1_Chr_3, temp=="33")
+sample_data(physeq1_Chr_3_33)
+
+###Chr mtORF 3, 36C
+
+physeq1_Chr_3_36 <- subset_samples(physeq1_Chr_3, temp=="36")
+sample_data(physeq1_Chr_3_36)
+
+```
+
+```{r}
+###Let's do something more straight forward with the same input as for our ordination plots -- why not show differences in beta diversity using Bray-Curtis? 
+
+set.seed(555)
+```
+
+```{r}
+###Let's create a matrix of just bray-curtis dissimilarity indices for our ps obj
+
+###If we were to see the same trends/gain same insights from our CAP plot, the variance across temperatures 
+
+bc_dist_Chr_1_28.5 <- phyloseq::distance(physeq1_Chr_1_28.5, method = "bray")
+
+#Turn to matrix
+bc_dist_Chr_1_28.5 <- as.matrix(bc_dist_Chr_1_28.5)
+
+###Sanity check
+
+bc_dist_Chr_1_28.5
+
+```
+```{r}
+##matrix to df
+
+bc_dist_Chr_1_28.5_df <- as.data.frame(as.table(bc_dist_Chr_1_28.5)) 
+
+bc_dist_Chr_1_28.5_df
+```
+
+```{r}
+
+colnames(bc_dist_Chr_1_28.5_df) <- c("Sample1", "Sample2", "Distance")
+
+bc_dist_Chr_1_28.5_df
+```
+
+
+```{r}
+# Remove samples being compared to each other, re s1 vs s1
+bc_dist_Chr_1_28.5_df <- bc_dist_Chr_1_28.5_df[bc_dist_Chr_1_28.5_df$Sample1 != bc_dist_Chr_1_28.5_df$Sample2, ]
+
+###check samples compared with each other are removed
+
+bc_dist_Chr_1_28.5_df
+```
+```{r}
+###Okay now let's try this for all samples together -- this smaller trial seems reasonably well behaved
+
+
+set.seed(1111)
+
+bc_dist_entiredat <- phyloseq::distance(ps1, method = "bray")
+
+head(bc_dist_entiredat)
+```
+
+```{r}
+###turn into matrix 
+
+bc_dist_entiredat_matrix <- as.matrix(bc_dist_entiredat)
+
+bc_dist_entiredat_matrix
+
+```
+
+
+```{r}
+###turn to df
+
+bc_dist_entiredat_df <- as.data.frame(as.table(bc_dist_entiredat_matrix)) 
+
+bc_dist_entiredat_df
+```
+
+```{r}
+colnames(bc_dist_entiredat_df) <- c("Sample1", "Sample2", "Distance")
+
+###looks good!
+
+bc_dist_entiredat_df
+```
+```{r}
+###Remove samples compared to themselves, re sa1 vs sa1
+
+bc_dist_entiredat_df <- bc_dist_entiredat_df[bc_dist_entiredat_df$Sample1 != bc_dist_entiredat_df$Sample2, ]
+
+bc_dist_entiredat_df
+
+class(bc_dist_entiredat_df)
+
+```
+
+```{r}
+##Let's map and add metadata
+
+metadata_matrix <- as.matrix(sample_data(ps1)) ##first turn to matrix
+
+metadata_bc <- as.data.frame(metadata_matrix)
+
+metadata_bc
+
+class(metadata_bc)
+```
+
+
+```{r}
+###The row names here are what is being denoted as the sample ID in the bray-curtis df, re Sample1 and Sample2 values. Let's name this a new column:
+
+metadata_bc <- metadata_bc %>%
+  rownames_to_column(var = "SampleID")
+
+metadata_bc
+```
+
+
+```{r}
+
+##Let's merge it all together, metadata + df with bc calc
+
+temp_meta <- metadata_bc %>% dplyr::select(SampleID, temp)
+
+temp_meta
+```
+
+```{r}
+
+bc_dist_entiredat_df_meta <- bc_dist_entiredat_df %>%
+  left_join(temp_meta, by = c("Sample1" = "SampleID")) %>%
+  mutate(temp1 = temp) %>%  # Use mutate to assign temp1 explicitly
+  select(-temp) %>%  # Remove the intermediate temp column
+  left_join(temp_meta, by = c("Sample2" = "SampleID")) %>%
+  mutate(temp2 = temp) %>%  # Assign temp2 explicitly
+  select(-temp)  # Remove the intermediate temp column
+
+```
+
+```{r}
+###Let's see how it looks
+
+bc_dist_entiredat_df_meta
+
+#wohoo! 
+
+```
+
+```{r}
+###Okay let's try to plot this!!!
+
+###If our goal is to show a drop in community variance at 36C, this needs to be done by plotting within temp values
+
+# Filter for within-temperature comparisons
+same_temp_bc <- bc_dist_entiredat_df_meta %>%
+  filter(temp1 == temp2) %>% # Keep rows where temp1 equals temp2
+  mutate(Temperature = temp1) # Assign a single temperature column
+
+same_temp_bc
+```
+
+```{r}
+# Plot
+ggplot(same_temp_bc, aes(x = factor(Temperature), y = Distance)) +
+  geom_boxplot() +
+  labs(x = "Temperature", y = "Bray-Curtis Distance", title = "Community dissimilarity within a temperature") +
+  theme_bw()
+```
