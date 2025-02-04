@@ -1,9 +1,9 @@
-# Environmentally-driven holobiont changes impact thermotolerance for Tropical Eastern Pacific corals
+# The role of holobiont composition and environmental history in thermotolerance of Tropical Eastern Pacific corals
 
 #### About
 This GitHub repository contains the code and part of the data to recreate the analyses of:
 
-Glynn, V. M., Marangoni, L. F. de B, M., Guglielmetti, M., Yuval, M., Tapia, E. R., Cornejo, A.,  Berkowitz-Sklar, D., Ali, V., Quintero, H., Guerra, E. C. R., Kline, D. I.,  L., Leray, Connolly, S. R., Barrett, R. D.H.. Environmentally-driven holobiont changes impact thermotolerance for Tropical Eastern Pacific corals. *Current Biology*, in review.
+Glynn, V. M., Marangoni, L. F. de B., Guglielmetti, M., Tapia, E. R., Ali, V., Quintero, H., Guerra, E. C. R., Yuval, M., Kline, D. I., Leray, M., Connolly, S. R., Barrett, R. D. H. The role of holobiont composition and environmental history in  thermotolerance of Tropical Eastern Pacific corals. *Current Biology*, in review.
 
 #### Contents
 This repository contains six folders:
