@@ -123,3 +123,49 @@ done
 grep -h CV ktests/*out
 
 ### Save resulting CV concatenated file for use as a .csv file in ADMIXTURE Rmd script, CBASS_TEP_admixture_15July2024.Rmd. In this script, we explore patterns across reef sites in each gulf, alongside if the observed patterns segregate by mtORF lineage.
+
+### Create new vcf with samples whose mtORF could not be identified removed (this file will be used to re-run ADMIXTURE exactly as above, yet here mtORF = 0 individuals will be removed)
+
+bcftools view --samples-file ^exclude_samples_mtorf.txt --output-type v -o mtorfCLEAN_vcf_uniquenames_coral_pruneddata_final_13Feb2024.vcf vcf_uniquenames_coral_pruneddata_final_13Feb2024.vcf
+
+### At this point, HPC finally added ADMIXTURE as a module, so ran it as follows:
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=00:30:00
+#SBATCH --output=%x-%j.out
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2
+
+plink2 --vcf mtorfCLEAN_vcf_uniquenames_coral_pruneddata_final_13Feb2024.vcf --make-bed --out pruned_snps_mtorf_10Dec2024 --allow-extra-chr 0 --max-alleles 2 --min-alleles 2
+
+### Run ADMIXTURE with cross-validation (CV) step, for K number of clusters 1-12
+
+#!/bin/bash
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=40
+#SBATCH --mem=125G
+#SBATCH --account=def-barrett
+#SBATCH --time=02:00:00
+#SBATCH --output=%x-%j.out
+#SBATCH -e %x-%j.err
+
+module --force purge
+module load StdEnv/2020  plink/2.00-10252019-avx2 admixture/1.3.0
+
+
+for K in `seq -w 1 12`
+do
+     admixture --cv pruned_snps_mtorf_10Dec2024.bed $K > ktests/k${K}.out 
+done
+
+### Create ktests directory
+
+mkdir -p ktests 
+
+### Inspect CV results
+
+grep -h CV ktests/*out
