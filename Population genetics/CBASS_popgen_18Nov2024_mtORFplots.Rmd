@@ -1,0 +1,125 @@
+
+```{r}
+
+##Now truly only coral samples, and sample names ~ gulf/reef sites!
+setwd("~/holobiont_2020-2021/PCA_19Sep2022")
+
+set.seed(12222)
+
+###load pckgs
+
+library(vctrs)
+library(readr)
+library(tidyverse)
+
+```
+
+```{r}
+##RDA to link upwelling regime's signal local adaptation to physiological outcome in CBASS
+
+library("smartsnp")
+library("poppr")    
+library("magrittr")
+library('vcfR')
+library("ggplot2")
+library("RColorBrewer")
+library("readr")
+library("devtools")
+
+
+vcf_file <- file.path("~/holobiont_2020-2021/PCA_19Sep2022/poppr/coral_onlyFILTER_bcftools_19Sep2022.vcf.gz")
+
+original_vcf <- read.vcfR("~/holobiont_2020-2021/PCA_19Sep2022/poppr/coral_onlyFILTER_bcftools_19Sep2022.vcf.gz")
+
+head(original_vcf)
+
+### with mtORF
+
+pop.data <- read.table("C:\\Users\\vmgly\\Documents\\holobiont_2020-2021\\PCA_19Sep2022\\population.gbs_final_mtorf_FINAL_18Oct2023.csv", sep = ",", header = TRUE)
+
+pop.data
+
+pop.data$mtorf <- as.factor(pop.data$mtorf)
+
+pop.data
+
+```
+
+
+```{r}
+###plot for mtORF breakdown per reef x gulf
+
+###let's count mtORF per site
+
+library(dplyr)
+
+
+pop.data_counts <- pop.data %>%
+  group_by(reef, mtorf, loc) %>%
+  summarise(count = n())
+
+pop.data_counts
+```
+```{r}
+###Now let's remove the NAs
+pop.data_counts <- pop.data_counts[!is.na(pop.data_counts$mtorf), ]
+
+pop.data_counts 
+```
+
+```{r}
+
+###relative abundance
+
+pop.data_relct <- pop.data_counts %>%
+  group_by(reef) %>%
+  mutate(total = sum(count),
+         relct = count / total)
+
+pop.data_relct
+```
+
+```{r}
+
+mtorf_breakdown <- ggplot(data = pop.data_counts, aes(x = reef, y = count, fill = factor(mtorf))) + 
+  scale_fill_manual(values = c("darkorchid4", "gold")) +
+  geom_bar(stat="identity") +
+  theme_bw()
+
+mtorf_breakdown
+```
+```{r}
+mtorf_breakdown_relct <- ggplot(data = pop.data_relct, aes(x = reef, y = relct, fill = factor(mtorf))) + 
+  scale_fill_manual(values = c("darkorchid4", "gold")) +
+  geom_bar(stat="identity") +
+  theme_bw()
+```
+
+```{r}
+###do per gulf separately
+
+pop.data_relct_Pan <- pop.data_relct[pop.data_relct$loc == "Perla",]
+
+pop.data_relct_Pan
+
+pop.data_relct_Chr <- pop.data_relct[pop.data_relct$loc == "Coiba",]
+
+pop.data_relct_Chr 
+
+```
+```{r}
+mtorf_breakdown_relct_Pan <- ggplot(data = pop.data_relct_Pan, aes(x = reef, y = relct, fill = factor(mtorf))) + 
+  scale_fill_manual(values = c("darkorchid4", "gold")) +
+  geom_bar(stat="identity") +
+  theme_bw()
+
+mtorf_breakdown_relct_Pan
+
+mtorf_breakdown_relct_Chr <- ggplot(data = pop.data_relct_Chr, aes(x = reef, y = relct, fill = factor(mtorf))) + 
+  scale_fill_manual(values = c("darkorchid4", "gold")) +
+  geom_bar(stat="identity") +
+  theme_bw()
+
+mtorf_breakdown_relct_Chr
+```
+
