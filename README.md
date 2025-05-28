@@ -3,12 +3,12 @@
 #### About
 This GitHub repository contains the code and part of the data to recreate the analyses of:
 
-Glynn, V. M., Marangoni, L. F. de B., Guglielmetti, M., Tapia, E. R., Ali, V., Quintero, H., Guerra, E. C. R., Yuval, M., Kline, D. I., Leray, M., Connolly, S. R., Barrett, R. D. H. The role of holobiont composition and environmental history in  thermotolerance of Tropical Eastern Pacific corals. *Current Biology*, in review.
+Glynn, V.M., Marangoni, L.F., Guglielmetti, M., Tapia, E.R., Ali, V., Quintero, H., Guerra, E.C.R., Yuval, M., Kline, D.I., Leray, M., Connolly, S.R., Barrett, R.D.H. (2025) The role of holobiont composition and environmental history in thermotolerance of Tropical Eastern Pacific corals. _Current Biology_ in press.
 
 #### Contents
 This repository contains six folders:
 
-* "Population genetics" : R scripts for downstream population genetic analyses, and associated sample metadata and input files (e.g. vcf files) 
+* "Population genetics" : R scripts for downstream population genetic analyses, and associated sample metadata and input files (e.g., vcf files) 
 
 * "ITS2" : R scripts for ITS2 marker-gene alpha and beta diversity analyses using SymPortal's taxonomic assignment on the basis of intragenomic variants (DIVs)
 
@@ -19,4 +19,4 @@ This repository contains six folders:
 * "Oxidative metabolism" : R scripts for lipid peroxidation (LPO) and non-enzymatic total antioxidant capacity (TAC) models, alongside the associated data  
 
 #### Questions
-If you have questions about the scripts please contact Victoria Marie Glynn (victoria.glynn@mail.mcgill.ca).
+If you have questions about the scripts please contact Dr. Victoria Marie Glynn (victoria.glynn@mail.mcgill.ca).
