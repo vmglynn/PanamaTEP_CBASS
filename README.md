@@ -20,3 +20,5 @@ This repository contains six folders:
 
 #### Questions
 If you have questions about the scripts please contact Dr. Victoria Marie Glynn (victoria.glynn@mail.mcgill.ca).
+
+<a href="https://doi.org/10.5281/zenodo.15532241"><img src="https://zenodo.org/badge/819232510.svg" alt="DOI"></a>
